@@ -40,8 +40,7 @@ public class CustomerService {
         return toCustomerResponse(savedCustomer);
     }
     public CustomerResponse findCustomerById(UUID id) {
-        Customer customer = customerRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Customer not found."));
+        Customer customer = findCustomerOrThrow(id);
         return toCustomerResponse(customer);
     }
     public List<CustomerResponse> findAllCustomers() {
@@ -49,8 +48,7 @@ public class CustomerService {
         return customers.stream().map(this::toCustomerResponse).toList();
     }
     public CustomerResponse updateCustomer(UUID id, UpdateCustomerRequest request) {
-        Customer customer = customerRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Customer not found."));
+        Customer customer = findCustomerOrThrow(id);
         boolean emailChanged = !customer.getEmail().equals(request.getEmail());
         if (emailChanged && customerRepository.existsByEmail(request.getEmail())) {
             throw new ConflictException("E-mail already registered.");
@@ -61,6 +59,14 @@ public class CustomerService {
         customer.setBirthDate(request.getBirthDate());
         Customer updatedCustomer = customerRepository.save(customer);
         return toCustomerResponse(updatedCustomer);
+    }
+    public void deleteCustomer(UUID id) {
+        Customer customer = findCustomerOrThrow(id);
+        customerRepository.delete(customer);
+    }
+    private Customer findCustomerOrThrow(UUID id) {
+        return customerRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Customer not found."));
     }
     private CustomerResponse toCustomerResponse(Customer customer) {
         return CustomerResponse.builder()
