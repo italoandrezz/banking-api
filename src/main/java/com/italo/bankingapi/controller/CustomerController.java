@@ -2,6 +2,7 @@ package com.italo.bankingapi.controller;
 
 import com.italo.bankingapi.dto.customer.CreateCustomerRequest;
 import com.italo.bankingapi.dto.customer.CustomerResponse;
+import com.italo.bankingapi.dto.customer.UpdateCustomerRequest;
 import com.italo.bankingapi.service.CustomerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,5 +36,10 @@ public class CustomerController {
         CustomerResponse response = customerService.findCustomerById(id);
         return ResponseEntity.ok(response);
     }
-
+    @PutMapping("/{id}")
+    public ResponseEntity<CustomerResponse> updateCustomer( @PathVariable UUID id,
+                                                            @Valid @RequestBody UpdateCustomerRequest request) {
+        CustomerResponse response = customerService.updateCustomer(id, request);
+        return ResponseEntity.ok(response);
+    }
 }
