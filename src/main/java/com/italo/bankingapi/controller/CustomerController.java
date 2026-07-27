@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -25,9 +26,14 @@ public class CustomerController {
                 .status(HttpStatus.CREATED)
                 .body(response);
     }
+    @GetMapping
+    public ResponseEntity<List<CustomerResponse>> findAllCustomers() {
+        return ResponseEntity.ok(customerService.findAllCustomers());
+    }
     @GetMapping("/{id}")
     public ResponseEntity<CustomerResponse> findCustomerById(@PathVariable UUID id) {
         CustomerResponse response = customerService.findCustomerById(id);
         return ResponseEntity.ok(response);
     }
+
 }
