@@ -37,18 +37,29 @@ public class AccountService {
         Account savedAccount = accountRepository.save(account);
         return toAccountResponse(savedAccount);
     }
+    public AccountResponse findAccountById(UUID id) {
+        Account account = findAccountOrThrow(id);
+        return toAccountResponse(account);
+    }
     private String generateUniqueAccountNumber() {
         String accountNumber;
         do {
             accountNumber = String.valueOf(
                     ThreadLocalRandom.current()
-                            .nextInt(10_000_000, 100_000_000));
+                            .nextInt(10_000_000, 100_000_000)
+            );
         } while (accountRepository.existsByAccountNumber(accountNumber));
         return accountNumber;
     }
     private Customer findCustomerOrThrow(UUID id) {
         return customerRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Customer not found."));
+                .orElseThrow(() ->
+                        new NotFoundException("Customer not found."));
+    }
+    private Account findAccountOrThrow(UUID id) {
+        return accountRepository.findById(id)
+                .orElseThrow(() ->
+                        new NotFoundException("Account not found."));
     }
     private AccountResponse toAccountResponse(Account account) {
         return AccountResponse.builder()
