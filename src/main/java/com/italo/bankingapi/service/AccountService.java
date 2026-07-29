@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -40,6 +41,10 @@ public class AccountService {
     public AccountResponse findAccountById(UUID id) {
         Account account = findAccountOrThrow(id);
         return toAccountResponse(account);
+    }
+    public List<AccountResponse> findAllAccounts() {
+        List<Account> accounts = accountRepository.findAll();
+        return accounts.stream().map(this::toAccountResponse).toList();
     }
     private String generateUniqueAccountNumber() {
         String accountNumber;
