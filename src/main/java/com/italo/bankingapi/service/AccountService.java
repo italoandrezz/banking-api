@@ -2,6 +2,7 @@ package com.italo.bankingapi.service;
 
 import com.italo.bankingapi.dto.account.AccountResponse;
 import com.italo.bankingapi.dto.account.CreateAccountRequest;
+import com.italo.bankingapi.dto.account.DepositRequest;
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
 import com.italo.bankingapi.enums.AccountStatus;
@@ -55,6 +56,12 @@ public class AccountService {
             );
         } while (accountRepository.existsByAccountNumber(accountNumber));
         return accountNumber;
+    }
+    public AccountResponse deposit(UUID id, DepositRequest request) {
+        Account account = findAccountOrThrow(id);
+        account.setBalance(account.getBalance().add(request.getAmount()));
+        Account updatedAccount = accountRepository.save(account);
+        return toAccountResponse(updatedAccount);
     }
     private Customer findCustomerOrThrow(UUID id) {
         return customerRepository.findById(id)
