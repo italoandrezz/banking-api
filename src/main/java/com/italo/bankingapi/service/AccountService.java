@@ -3,9 +3,12 @@ package com.italo.bankingapi.service;
 import com.italo.bankingapi.dto.account.AccountResponse;
 import com.italo.bankingapi.dto.account.CreateAccountRequest;
 import com.italo.bankingapi.dto.account.DepositRequest;
+import com.italo.bankingapi.dto.account.WithdrawRequest;
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
 import com.italo.bankingapi.enums.AccountStatus;
+import com.italo.bankingapi.exception.ConflictException;
+import com.italo.bankingapi.exception.InsufficientBalanceException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
@@ -60,6 +63,17 @@ public class AccountService {
     public AccountResponse deposit(UUID id, DepositRequest request) {
         Account account = findAccountOrThrow(id);
         account.setBalance(account.getBalance().add(request.getAmount()));
+        Account updatedAccount = accountRepository.save(account);
+        return toAccountResponse(updatedAccount);
+    }
+    public AccountResponse withdraw(UUID id, WithdrawRequest request) {
+        Account account = findAccountOrThrow(id);
+        if (account.getBalance().compareTo(request.getAmount()) < 0) {
+            throw new InsufficientBalanceException("Insufficient balance.");
+        }
+        account.setBalance(
+                account.getBalance().subtract(request.getAmount())
+        );
         Account updatedAccount = accountRepository.save(account);
         return toAccountResponse(updatedAccount);
     }
