@@ -141,14 +141,14 @@ http://localhost:8080
 - [x] Customer registration
 - [x] Bean Validation
 - [x] Global Exception Handler
-- [ ] Customer CRUD
+- [x] Customer CRUD
 - [ ] JWT Authentication
 - [ ] Password Encryption (BCrypt)
 - [ ] Swagger / OpenAPI
 - [ ] Unit Tests
 - [ ] Docker
 - [ ] Docker Compose
-- [ ] Banking Accounts
+- [x] Banking Accounts
 - [ ] Transactions
 
 ---
