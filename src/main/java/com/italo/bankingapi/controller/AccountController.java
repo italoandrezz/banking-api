@@ -2,6 +2,7 @@ package com.italo.bankingapi.controller;
 
 import com.italo.bankingapi.dto.account.AccountResponse;
 import com.italo.bankingapi.dto.account.CreateAccountRequest;
+import com.italo.bankingapi.dto.account.DepositRequest;
 import com.italo.bankingapi.service.AccountService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,7 @@ public class AccountController {
     @PostMapping
     public ResponseEntity<AccountResponse> createAccount(@Valid @RequestBody CreateAccountRequest request) {
         AccountResponse response = accountService.createAccount(request);
-        return  ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
     @GetMapping
     public ResponseEntity<List<AccountResponse>> findAllAccounts() {
@@ -31,6 +32,11 @@ public class AccountController {
     @GetMapping("/{id}")
     public ResponseEntity<AccountResponse> findAccountById(@PathVariable UUID id) {
         AccountResponse response = accountService.findAccountById(id);
+        return ResponseEntity.ok(response);
+    }
+    @PostMapping("/{id}/deposit")
+    public ResponseEntity<AccountResponse> deposit(@PathVariable UUID id, @Valid @RequestBody DepositRequest request) {
+        AccountResponse response = accountService.deposit(id, request);
         return ResponseEntity.ok(response);
     }
 }
