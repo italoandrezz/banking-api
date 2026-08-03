@@ -1,9 +1,6 @@
 package com.italo.bankingapi.service;
 
-import com.italo.bankingapi.dto.account.AccountResponse;
-import com.italo.bankingapi.dto.account.CreateAccountRequest;
-import com.italo.bankingapi.dto.account.DepositRequest;
-import com.italo.bankingapi.dto.account.WithdrawRequest;
+import com.italo.bankingapi.dto.account.*;
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
 import com.italo.bankingapi.enums.AccountStatus;
@@ -14,6 +11,7 @@ import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -76,6 +74,22 @@ public class AccountService {
         );
         Account updatedAccount = accountRepository.save(account);
         return toAccountResponse(updatedAccount);
+    }
+    @Transactional
+    public AccountResponse transfer(TransferRequest request) {
+        Account sourceAccount = findAccountOrThrow(request.getSourceAccountId());
+        Account destinationAccount = findAccountOrThrow(request.getDestinationAccountId());
+        if (sourceAccount.getId().equals(destinationAccount.getId())) {
+            throw new ConflictException("Source and destination accounts must be different.");
+        }
+        if (sourceAccount.getBalance().compareTo(request.getAmount()) < 0) {
+            throw new InsufficientBalanceException("Insufficient balance.");
+        }
+        sourceAccount.setBalance(sourceAccount.getBalance().subtract(request.getAmount()));
+        destinationAccount.setBalance(destinationAccount.getBalance().add(request.getAmount()));
+        accountRepository.save(sourceAccount);
+        accountRepository.save(destinationAccount);
+        return toAccountResponse(sourceAccount);
     }
     private Customer findCustomerOrThrow(UUID id) {
         return customerRepository.findById(id)
