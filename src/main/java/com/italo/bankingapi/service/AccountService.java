@@ -3,12 +3,15 @@ package com.italo.bankingapi.service;
 import com.italo.bankingapi.dto.account.*;
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
+import com.italo.bankingapi.entity.Transaction;
 import com.italo.bankingapi.enums.AccountStatus;
+import com.italo.bankingapi.enums.TransactionType;
 import com.italo.bankingapi.exception.ConflictException;
 import com.italo.bankingapi.exception.InsufficientBalanceException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
+import com.italo.bankingapi.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +28,7 @@ public class AccountService {
 
     private final AccountRepository accountRepository;
     private final CustomerRepository customerRepository;
+    private final TransactionRepository transactionRepository;
 
     public AccountResponse createAccount(CreateAccountRequest request) {
         Customer customer = findCustomerOrThrow(request.getCustomerId());
@@ -62,6 +66,12 @@ public class AccountService {
         Account account = findAccountOrThrow(id);
         account.setBalance(account.getBalance().add(request.getAmount()));
         Account updatedAccount = accountRepository.save(account);
+        saveTransaction(
+                updatedAccount,
+                null,
+                TransactionType.DEPOSIT,
+                request.getAmount(),
+                "Account deposit");
         return toAccountResponse(updatedAccount);
     }
     public AccountResponse withdraw(UUID id, WithdrawRequest request) {
@@ -73,6 +83,12 @@ public class AccountService {
                 account.getBalance().subtract(request.getAmount())
         );
         Account updatedAccount = accountRepository.save(account);
+        saveTransaction(
+                updatedAccount,
+                null,
+                TransactionType.WITHDRAW,
+                request.getAmount(),
+                "Account withdrawal");
         return toAccountResponse(updatedAccount);
     }
     @Transactional
@@ -89,7 +105,31 @@ public class AccountService {
         destinationAccount.setBalance(destinationAccount.getBalance().add(request.getAmount()));
         accountRepository.save(sourceAccount);
         accountRepository.save(destinationAccount);
+        saveTransaction(
+                sourceAccount,
+                destinationAccount,
+                TransactionType.TRANSFER,
+                request.getAmount(),
+                "Account transfer");
         return toAccountResponse(sourceAccount);
+    }
+    private void saveTransaction(
+            Account originAccount,
+            Account destinationAccount,
+            TransactionType type,
+            BigDecimal amount,
+            String description) {
+
+        Transaction transaction = Transaction.builder()
+                .originAccount(originAccount)
+                .destinationAccount(destinationAccount)
+                .type(type)
+                .amount(amount)
+                .description(description)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        transactionRepository.save(transaction);
     }
     private Customer findCustomerOrThrow(UUID id) {
         return customerRepository.findById(id)
