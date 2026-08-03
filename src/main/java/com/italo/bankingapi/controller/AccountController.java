@@ -1,9 +1,6 @@
 package com.italo.bankingapi.controller;
 
-import com.italo.bankingapi.dto.account.AccountResponse;
-import com.italo.bankingapi.dto.account.CreateAccountRequest;
-import com.italo.bankingapi.dto.account.DepositRequest;
-import com.italo.bankingapi.dto.account.WithdrawRequest;
+import com.italo.bankingapi.dto.account.*;
 import com.italo.bankingapi.service.AccountService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +40,11 @@ public class AccountController {
     @PostMapping("/{id}/withdraw")
     public ResponseEntity<AccountResponse> withdraw(@PathVariable UUID id, @Valid @RequestBody WithdrawRequest request) {
         AccountResponse response = accountService.withdraw(id, request);
+        return ResponseEntity.ok(response);
+    }
+    @PostMapping("/transfer")
+    public ResponseEntity<AccountResponse> transfer(@Valid @RequestBody TransferRequest request) {
+        AccountResponse response = accountService.transfer(request);
         return ResponseEntity.ok(response);
     }
 }
