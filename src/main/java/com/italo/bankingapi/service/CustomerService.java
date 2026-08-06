@@ -8,6 +8,7 @@ import com.italo.bankingapi.exception.ConflictException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,7 @@ import java.util.UUID;
 public class CustomerService {
 
     private final CustomerRepository customerRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public CustomerResponse createCustomer(CreateCustomerRequest request) {
         if (customerRepository.existsByCpf(request.getCpf())) {
@@ -31,7 +33,7 @@ public class CustomerService {
                 .fullName(request.getFullName())
                 .cpf(request.getCpf())
                 .email(request.getEmail())
-                .password(request.getPassword())
+                .password(passwordEncoder.encode(request.getPassword()))
                 .phone(request.getPhone())
                 .birthDate(request.getBirthDate())
                 .createdAt(LocalDateTime.now())
