@@ -1,8 +1,24 @@
 # 🏦 Banking API
 
+
+
 A RESTful Banking API built with **Java 17** and **Spring Boot** to simulate banking operations while applying modern backend development best practices.
 
 This project is part of my backend learning journey, where I apply clean architecture principles, REST API design, Spring ecosystem technologies, and PostgreSQL to build a real-world banking application.
+
+---
+
+## 📌 Current Status
+
+This project is under active development following a feature-branch workflow.
+
+Implemented features:
+
+- Customer CRUD
+- Banking Accounts
+- Money Transfers
+- Transaction History
+- Swagger/OpenAPI Documentation
 
 ---
 
@@ -16,6 +32,7 @@ This project is part of my backend learning journey, where I apply clean archite
 - Bean Validation
 - PostgreSQL
 - Flyway
+- Springdoc OpenAPI (Swagger)
 - Lombok
 - Maven
 - Postman
@@ -30,13 +47,13 @@ The project follows a layered architecture:
            HTTP Request
                  │
                  ▼
-         CustomerController
+         REST Controller
                  │
                  ▼
-          CustomerService
+          Service Layer
                  │
                  ▼
-        CustomerRepository
+        Repository Layer
                  │
                  ▼
             PostgreSQL
@@ -63,17 +80,103 @@ src
 
 ## ✅ Current Features
 
-### Customer Module
+### Customers
 
 - Customer registration
+- Customer CRUD
 - Request validation using Bean Validation
 - Global exception handling
 - Duplicate CPF validation
 - Duplicate email validation
 
+### Accounts
+
+- Create bank account
+- List accounts
+- Find account by ID
+- Deposit
+- Withdraw
+- Transfer between accounts
+
+### Transactions
+
+- Automatic transaction history
+- Deposit history
+- Withdraw history
+- Transfer history
+
+### API Documentation
+
+- Swagger UI
+- OpenAPI 3 documentation
+
+---
+
+## ▶️ Running the Project
+
+### Clone the repository
+
+```bash
+git clone https://github.com/italoandrezz/banking-api.git
+```
+
+### Navigate to the project
+
+```bash
+cd banking-api
+```
+
+### Run the application
+
+```bash
+./mvnw spring-boot:run
+```
+
+The API will be available at:
+
+```text
+http://localhost:8080
+```
+---
+
+## 📖 API Documentation
+
+Once the application is running, access:
+
+```text
+http://localhost:8080/swagger-ui/index.html
+```
+
 ---
 
 ## 📡 Available Endpoints
+
+### Customers
+
+| Method | Endpoint |
+|---------|----------|
+| POST | /customers |
+| GET | /customers |
+| GET | /customers/{id} |
+| PUT | /customers/{id} |
+| DELETE | /customers/{id} |
+
+### Accounts
+
+| Method | Endpoint |
+|---------|----------|
+| POST | /accounts |
+| GET | /accounts |
+| GET | /accounts/{id} |
+| POST | /accounts/{id}/deposit |
+| POST | /accounts/{id}/withdraw |
+| POST | /accounts/transfer |
+
+### Transactions
+
+| Method | Endpoint |
+|---------|----------|
+| GET | /accounts/{id}/transactions |
 
 ### Create Customer
 
@@ -108,48 +211,20 @@ src
 
 ---
 
-## ▶️ Running the Project
-
-### Clone the repository
-
-```bash
-git clone https://github.com/your-username/banking-api.git
-```
-
-### Navigate to the project
-
-```bash
-cd banking-api
-```
-
-### Run the application
-
-```bash
-./mvnw spring-boot:run
-```
-
-The API will be available at:
-
-```text
-http://localhost:8080
-```
-
----
-
 ## 🗺️ Roadmap
 
 - [x] Customer registration
 - [x] Bean Validation
 - [x] Global Exception Handler
 - [x] Customer CRUD
-- [ ] JWT Authentication
+- [x] Banking Accounts
+- [x] Transactions
+- [x] Swagger / OpenAPI
 - [ ] Password Encryption (BCrypt)
-- [ ] Swagger / OpenAPI
+- [ ] JWT Authentication
 - [ ] Unit Tests
 - [ ] Docker
 - [ ] Docker Compose
-- [x] Banking Accounts
-- [ ] Transactions
 
 ---
 
