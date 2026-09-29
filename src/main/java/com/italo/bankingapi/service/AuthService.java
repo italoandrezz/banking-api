@@ -27,7 +27,7 @@ public class AuthService {
         if (!passwordMatches) {
             throw new UnauthorizedException("Invalid e-mail or password.");
         }
-        String token = jwtService.generateToken(customer.getEmail());
+        String token = jwtService.generateToken(customer.getId());
         return new LoginResponse(token);
     }
 }

@@ -17,6 +17,12 @@ import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
 import com.italo.bankingapi.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.Spy;
+import com.italo.bankingapi.config.security.AuthenticatedCustomer;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -40,6 +46,23 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class AccountServiceTest {
+
+    private static final UUID OWNER_ID = UUID.fromString("d6125356-0ee7-4079-8a11-45644d135724");
+
+    @Spy
+    private AuthenticatedCustomer authenticatedCustomer = new AuthenticatedCustomer();
+
+    @BeforeEach
+    void authenticateCustomer() {
+        Customer customer = Customer.builder().id(OWNER_ID).build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(customer, null, List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Mock
     private AccountRepository accountRepository;
@@ -154,11 +177,11 @@ class AccountServiceTest {
     }
 
     @Test
-    void shouldListAllAccountsSuccessfully() {
+    void shouldListOnlyAuthenticatedCustomerAccounts() {
         // Arrange
         Account firstAccount = createAccount(new BigDecimal("100.00"));
         Account secondAccount = createAccount(new BigDecimal("200.00"));
-        when(accountRepository.findAll()).thenReturn(List.of(firstAccount, secondAccount));
+        when(accountRepository.findByCustomerId(OWNER_ID)).thenReturn(List.of(firstAccount, secondAccount));
 
         // Act
         List<AccountResponse> responses = accountService.findAllAccounts();
@@ -167,7 +190,7 @@ class AccountServiceTest {
         assertEquals(2, responses.size());
         assertAccountResponse(responses.get(0), firstAccount);
         assertAccountResponse(responses.get(1), secondAccount);
-        verify(accountRepository, times(1)).findAll();
+        verify(accountRepository, times(1)).findByCustomerId(OWNER_ID);
     }
 
     @Test
@@ -263,6 +286,7 @@ class AccountServiceTest {
         // Arrange
         Account source = createAccount(new BigDecimal("100.00"));
         Account destination = createAccount(new BigDecimal("20.00"));
+        destination.setCustomer(Customer.builder().id(UUID.randomUUID()).build());
         TransferRequest request = new TransferRequest(source.getId(), destination.getId(), new BigDecimal("40.00"));
         when(accountRepository.findById(source.getId())).thenReturn(Optional.of(source));
         when(accountRepository.findById(destination.getId())).thenReturn(Optional.of(destination));
@@ -344,6 +368,7 @@ class AccountServiceTest {
         // Arrange
         Account source = createAccount(new BigDecimal("30.00"));
         Account destination = createAccount(new BigDecimal("20.00"));
+        destination.setCustomer(Customer.builder().id(UUID.randomUUID()).build());
         TransferRequest request = new TransferRequest(source.getId(), destination.getId(), new BigDecimal("40.00"));
         when(accountRepository.findById(source.getId())).thenReturn(Optional.of(source));
         when(accountRepository.findById(destination.getId())).thenReturn(Optional.of(destination));
@@ -363,7 +388,7 @@ class AccountServiceTest {
     }
 
     private Customer createCustomer() {
-        return Customer.builder().id(UUID.randomUUID()).build();
+        return Customer.builder().id(OWNER_ID).build();
     }
 
     private Account createAccount(BigDecimal balance) {

@@ -149,6 +149,27 @@ http://localhost:8080/swagger-ui/index.html
 
 ---
 
+## Authentication and account ownership
+
+Register through `POST /customers`, then log in through `POST /auth/login` with e-mail and password.
+Send the returned token as `Authorization: Bearer <token>` on private endpoints.
+Configure `JWT_SECRET` with a strong HMAC secret of at least 32 UTF-8 bytes before starting the application or running context tests.
+
+JWT subjects contain the immutable customer UUID. Tokens issued with e-mail subjects are no longer accepted: log in again.
+Changing an e-mail does not change the customer's token identity.
+
+- `GET /customers` returns 403 for authenticated customers; there is no administrator listing.
+- `GET/PUT/DELETE /customers/{id}` operate only on the authenticated customer's own ID.
+- `POST /accounts` retains `customerId`, which must match the authenticated customer.
+- `GET /accounts` lists only the authenticated customer's accounts.
+- Account lookup, deposit, withdrawal and transaction history require account ownership.
+- Transfers require ownership of the source account; the destination may belong to another customer.
+- Missing/invalid authentication returns 401; an existing resource belonging to another customer returns 403; a nonexistent resource returns 404.
+
+Deposits represent the authenticated account holder's operation, not an external payment intake.
+
+---
+
 ## 📡 Available Endpoints
 
 ### Customers
@@ -156,7 +177,7 @@ http://localhost:8080/swagger-ui/index.html
 | Method | Endpoint |
 |---------|----------|
 | POST | /customers |
-| GET | /customers |
+| GET | /customers (403; listing unavailable) |
 | GET | /customers/{id} |
 | PUT | /customers/{id} |
 | DELETE | /customers/{id} |
@@ -220,9 +241,9 @@ http://localhost:8080/swagger-ui/index.html
 - [x] Banking Accounts
 - [x] Transactions
 - [x] Swagger / OpenAPI
-- [ ] Password Encryption (BCrypt)
-- [ ] JWT Authentication
-- [ ] Unit Tests
+- [x] Password Encryption (BCrypt)
+- [x] JWT Authentication with customer UUID and ownership checks
+- [x] Unit Tests and HTTP ownership/security tests
 - [ ] Docker
 - [ ] Docker Compose
 

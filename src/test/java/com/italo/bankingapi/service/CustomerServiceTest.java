@@ -8,6 +8,12 @@ import com.italo.bankingapi.exception.ConflictException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.repository.CustomerRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.Spy;
+import com.italo.bankingapi.config.security.AuthenticatedCustomer;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -32,6 +38,23 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class CustomerServiceTest {
+
+    private static final UUID OWNER_ID = UUID.fromString("d6125356-0ee7-4079-8a11-45644d135724");
+
+    @Spy
+    private AuthenticatedCustomer authenticatedCustomer = new AuthenticatedCustomer();
+
+    @BeforeEach
+    void authenticateCustomer() {
+        Customer customer = Customer.builder().id(OWNER_ID).build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(customer, null, List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Mock
     private CustomerRepository customerRepository;
@@ -215,35 +238,10 @@ class CustomerServiceTest {
     }
 
     @Test
-    void shouldListAllCustomersSuccessfully() {
-        // Arrange
-        Customer firstCustomer = createCustomer();
-        Customer secondCustomer = createCustomer();
-        secondCustomer.setId(UUID.randomUUID());
-        secondCustomer.setEmail("second@test.com");
-        when(customerRepository.findAll()).thenReturn(List.of(firstCustomer, secondCustomer));
-
-        // Act
-        List<CustomerResponse> responses = customerService.findAllCustomers();
-
-        // Assert
-        assertEquals(2, responses.size());
-        assertCustomerResponse(responses.get(0), firstCustomer);
-        assertCustomerResponse(responses.get(1), secondCustomer);
-        verify(customerRepository, times(1)).findAll();
-    }
-
-    @Test
-    void shouldReturnEmptyListWhenNoCustomersExist() {
-        // Arrange
-        when(customerRepository.findAll()).thenReturn(List.of());
-
-        // Act
-        List<CustomerResponse> responses = customerService.findAllCustomers();
-
-        // Assert
-        assertEquals(0, responses.size());
-        verify(customerRepository, times(1)).findAll();
+    void shouldDenyCustomerListing() {
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> customerService.findAllCustomers());
+        verify(customerRepository, never()).findAll();
     }
 
     @Test
@@ -364,7 +362,7 @@ class CustomerServiceTest {
 
     private Customer createCustomer() {
         return Customer.builder()
-                .id(UUID.randomUUID())
+                .id(OWNER_ID)
                 .fullName("Italo Teste")
                 .cpf("12345678901")
                 .email("italo@test.com")

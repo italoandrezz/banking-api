@@ -1,5 +1,6 @@
 package com.italo.bankingapi.service;
 
+import com.italo.bankingapi.config.security.AuthenticatedCustomer;
 import com.italo.bankingapi.dto.transaction.TransactionResponse;
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Transaction;
@@ -18,9 +19,11 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
+    private final AuthenticatedCustomer authenticatedCustomer;
 
     public List<TransactionResponse> findTransactionsByAccountId(UUID accountId) {
         Account account = findAccountOrThrow(accountId);
+        authenticatedCustomer.requireOwner(account.getCustomer().getId());
         List<Transaction> transactions = transactionRepository
                         .findByOriginAccountIdOrDestinationAccountId(
                                 account.getId(),
