@@ -177,6 +177,23 @@ does not require `JWT_SECRET`.
 On Windows, use `.\mvnw.cmd`. GitHub Actions provisions a separate PostgreSQL
 test database and uses the same configuration.
 
+### Financial atomicity
+
+Deposits, withdrawals and transfers execute balance changes and transaction
+history in a single database transaction. A persistence failure rolls back
+the entire operation.
+
+`AccountServiceIntegrationTest` uses real services, repositories and PostgreSQL.
+Tests are not wrapped in a test-managed transaction: they read persisted balances
+and history through JDBC after the service call finishes. Test-only deferred
+triggers simulate failures when committing history or crediting the destination.
+The suite checks successful operations, complete rollback and preservation of
+previously committed transactions. Fixtures and failure triggers are removed
+between tests; run these database tests sequentially.
+
+Atomicity does not protect against concurrent balance updates. Concurrency
+control remains a separate task.
+
 ## Authentication and account ownership
 
 Register through `POST /customers`, then log in through `POST /auth/login` with e-mail and password.

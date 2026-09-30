@@ -1,6 +1,7 @@
 package com.italo.bankingapi.service;
 
 import com.italo.bankingapi.dto.account.DepositRequest;
+import com.italo.bankingapi.dto.account.TransferRequest;
 import com.italo.bankingapi.dto.account.WithdrawRequest;
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
@@ -10,6 +11,7 @@ import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,6 +96,68 @@ class AccountServiceIntegrationTest {
         assertEquals(0, historyCount());
     }
 
+    @Test
+    void shouldCommitTransferBetweenDifferentCustomersWithOneHistoryEntry() {
+        accountService.transfer(transferRequest());
+
+        assertBalance(source, "75.00");
+        assertBalance(destination, "75.00");
+        assertEquals(new BigDecimal("150.00"), jdbcTemplate.queryForObject(
+                "SELECT sum(balance) FROM banking_api_tests.accounts", BigDecimal.class));
+        assertEquals(1, historyCount());
+        var transaction = jdbcTemplate.queryForMap("""
+                SELECT account_id, destination_account_id, type::text AS type, amount
+                FROM banking_api_tests.transactions
+                """);
+        assertEquals(source.getId(), transaction.get("account_id"));
+        assertEquals(destination.getId(), transaction.get("destination_account_id"));
+        assertEquals("TRANSFER", transaction.get("type"));
+        assertEquals(new BigDecimal("25.00"), transaction.get("amount"));
+    }
+
+    @Test
+    void shouldRollBackBothBalancesWhenTransferHistoryCannotCommit() {
+        rejectHistoryAtCommit();
+
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> accountService.transfer(transferRequest()));
+        assertTrue(rootCause(exception).getMessage().contains("Simulated history write failure"));
+        assertBalance(source, "100.00");
+        assertBalance(destination, "50.00");
+        assertEquals(0, historyCount());
+    }
+
+    @Test
+    void shouldRollBackDebitAndHistoryWhenDestinationCreditCannotCommit() {
+        rejectDestinationCreditAtCommit();
+
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> accountService.transfer(transferRequest()));
+        assertTrue(rootCause(exception).getMessage().contains("Simulated destination credit failure"));
+        assertBalance(source, "100.00");
+        assertBalance(destination, "50.00");
+        assertEquals(0, historyCount());
+    }
+
+    @Test
+    void shouldPreservePreviouslyCommittedTransferWhenNextTransferFails() {
+        accountService.transfer(transferRequest());
+        var previousHistory = jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions");
+        rejectHistoryAtCommit();
+
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> accountService.transfer(transferRequest()));
+        assertTrue(rootCause(exception).getMessage().contains("Simulated history write failure"));
+        assertBalance(source, "75.00");
+        assertBalance(destination, "75.00");
+        assertEquals(previousHistory,
+                jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions"));
+    }
+
+    private TransferRequest transferRequest() {
+        return new TransferRequest(source.getId(), destination.getId(), new BigDecimal("25.00"));
+    }
+
     private void moveMoney(TransactionType type) {
         if (type == TransactionType.DEPOSIT) {
             accountService.deposit(source.getId(), new DepositRequest(new BigDecimal("25.00")));
@@ -128,6 +192,26 @@ class AccountServiceIntegrationTest {
         assertEquals(new BigDecimal(expected), actual);
     }
 
+    private void rejectDestinationCreditAtCommit() {
+        jdbcTemplate.execute("""
+                CREATE FUNCTION banking_api_tests.reject_destination_credit() RETURNS trigger
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'Simulated destination credit failure' USING ERRCODE = '23514';
+                END;
+                $$
+                """);
+        // Only the destination update is rejected, after all pending writes
+        // have been flushed. The source debit and history must also roll back.
+        jdbcTemplate.execute("""
+                CREATE CONSTRAINT TRIGGER reject_destination_credit
+                AFTER UPDATE ON banking_api_tests.accounts
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW WHEN (NEW.id = '%s'::uuid)
+                EXECUTE FUNCTION banking_api_tests.reject_destination_credit()
+                """.formatted(destination.getId()));
+    }
+
     private int historyCount() {
         return jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM banking_api_tests.transactions", Integer.class);
@@ -156,6 +240,8 @@ class AccountServiceIntegrationTest {
     private void cleanFixtures() {
         jdbcTemplate.execute("DROP TRIGGER IF EXISTS reject_history_write ON banking_api_tests.transactions");
         jdbcTemplate.execute("DROP FUNCTION IF EXISTS banking_api_tests.reject_history_write()");
+        jdbcTemplate.execute("DROP TRIGGER IF EXISTS reject_destination_credit ON banking_api_tests.accounts");
+        jdbcTemplate.execute("DROP FUNCTION IF EXISTS banking_api_tests.reject_destination_credit()");
         jdbcTemplate.execute("""
                 TRUNCATE TABLE banking_api_tests.transactions, banking_api_tests.accounts,
                 banking_api_tests.addresses, banking_api_tests.customers
