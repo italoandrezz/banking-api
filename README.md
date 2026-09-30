@@ -149,11 +149,56 @@ http://localhost:8080/swagger-ui/index.html
 
 ---
 
+## Running tests
+
+The Spring context and database integration tests use the `test` profile and a
+dedicated PostgreSQL database. Create it once using a PostgreSQL user with
+permission to create databases:
+
+```sql
+CREATE DATABASE banking_api_test;
+```
+
+By default, tests connect to `localhost:5432/banking_api_test` with user
+`postgres` and password `admin`. Override these values with
+`TEST_DATABASE_URL`, `TEST_DATABASE_USERNAME` and `TEST_DATABASE_PASSWORD`.
+Use a dedicated test database, never a production database.
+
+Flyway applies the existing migrations to the `banking_api_tests` schema.
+Integration fixtures are disposable and may be cleared between tests in that
+schema. The test profile supplies its own test-only JWT key, so running tests
+does not require `JWT_SECRET`.
+
+```bash
+./mvnw clean test
+./mvnw clean verify
+```
+
+On Windows, use `.\mvnw.cmd`. GitHub Actions provisions a separate PostgreSQL
+test database and uses the same configuration.
+
+### Financial atomicity
+
+Deposits, withdrawals and transfers execute balance changes and transaction
+history in a single database transaction. A persistence failure rolls back
+the entire operation.
+
+`AccountServiceIntegrationTest` uses real services, repositories and PostgreSQL.
+Tests are not wrapped in a test-managed transaction: they read persisted balances
+and history through JDBC after the service call finishes. Test-only deferred
+triggers simulate failures when committing history or crediting the destination.
+The suite checks successful operations, complete rollback and preservation of
+previously committed transactions. Fixtures and failure triggers are removed
+between tests; run these database tests sequentially.
+
+Atomicity does not protect against concurrent balance updates. Concurrency
+control remains a separate task.
+
 ## Authentication and account ownership
 
 Register through `POST /customers`, then log in through `POST /auth/login` with e-mail and password.
 Send the returned token as `Authorization: Bearer <token>` on private endpoints.
-Configure `JWT_SECRET` with a strong HMAC secret of at least 32 UTF-8 bytes before starting the application or running context tests.
+Configure `JWT_SECRET` with a strong HMAC secret of at least 32 UTF-8 bytes before starting the application.
 
 JWT subjects contain the immutable customer UUID. Tokens issued with e-mail subjects are no longer accepted: log in again.
 Changing an e-mail does not change the customer's token identity.
