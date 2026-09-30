@@ -65,6 +65,7 @@ public class AccountService {
         } while (accountRepository.existsByAccountNumber(accountNumber));
         return accountNumber;
     }
+    @Transactional
     public AccountResponse deposit(UUID id, DepositRequest request) {
         Account account = findOwnedAccountOrThrow(id);
         account.setBalance(account.getBalance().add(request.getAmount()));
@@ -77,6 +78,7 @@ public class AccountService {
                 "Account deposit");
         return toAccountResponse(updatedAccount);
     }
+    @Transactional
     public AccountResponse withdraw(UUID id, WithdrawRequest request) {
         Account account = findOwnedAccountOrThrow(id);
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
