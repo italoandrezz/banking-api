@@ -18,6 +18,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -62,7 +63,7 @@ class JwtAuthenticationFilterTest {
 
         // Assert
         verify(filterChain, times(1)).doFilter(request, response);
-        verify(jwtService, never()).extractEmail(any());
+        verify(jwtService, never()).extractCustomerId(any());
         assertNull(SecurityContextHolder.getContext().getAuthentication());
     }
 
@@ -78,7 +79,7 @@ class JwtAuthenticationFilterTest {
 
         // Assert
         verify(filterChain, times(1)).doFilter(request, response);
-        verify(jwtService, never()).extractEmail(any());
+        verify(jwtService, never()).extractCustomerId(any());
         assertNull(SecurityContextHolder.getContext().getAuthentication());
     }
 
@@ -86,18 +87,20 @@ class JwtAuthenticationFilterTest {
     void shouldAuthenticateExistingUserWhenTokenIsValid() throws Exception {
         // Arrange
         String token = "valid-token";
-        String email = "italo@test.com";
-        Customer customer = Customer.builder().email(email).build();
+        UUID customerId = UUID.randomUUID();
+        Customer customer = Customer.builder().id(customerId).email("updated@test.com").build();
         MockHttpServletRequest request = bearerRequest(token);
         MockHttpServletResponse response = new MockHttpServletResponse();
-        when(jwtService.extractEmail(token)).thenReturn(email);
-        when(customerRepository.findByEmail(email)).thenReturn(Optional.of(customer));
-        when(jwtService.isTokenValid(token, email)).thenReturn(true);
+        when(jwtService.extractCustomerId(token)).thenReturn(customerId);
+        when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
+        when(jwtService.isTokenValid(token, customerId)).thenReturn(true);
 
         // Act
         jwtAuthenticationFilter.doFilter(request, response, filterChain);
 
         // Assert
+        verify(customerRepository).findById(customerId);
+        verify(customerRepository, never()).findByEmail(any());
         assertSame(customer, SecurityContextHolder.getContext().getAuthentication().getPrincipal());
         assertEquals(true, SecurityContextHolder.getContext().getAuthentication().isAuthenticated());
         verify(filterChain, times(1)).doFilter(request, response);
@@ -110,7 +113,7 @@ class JwtAuthenticationFilterTest {
         String token = "invalid-token";
         MockHttpServletRequest request = bearerRequest(token);
         MockHttpServletResponse response = new MockHttpServletResponse();
-        when(jwtService.extractEmail(token)).thenThrow(new MalformedJwtException("Invalid token"));
+        when(jwtService.extractCustomerId(token)).thenThrow(new MalformedJwtException("Invalid token"));
 
         // Act
         jwtAuthenticationFilter.doFilter(request, response, filterChain);
@@ -126,11 +129,11 @@ class JwtAuthenticationFilterTest {
     void shouldRejectRequestWhenTokenUserDoesNotExist() throws Exception {
         // Arrange
         String token = "valid-token";
-        String email = "missing@test.com";
+        UUID customerId = UUID.randomUUID();
         MockHttpServletRequest request = bearerRequest(token);
         MockHttpServletResponse response = new MockHttpServletResponse();
-        when(jwtService.extractEmail(token)).thenReturn(email);
-        when(customerRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(jwtService.extractCustomerId(token)).thenReturn(customerId);
+        when(customerRepository.findById(customerId)).thenReturn(Optional.empty());
 
         // Act
         jwtAuthenticationFilter.doFilter(request, response, filterChain);

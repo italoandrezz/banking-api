@@ -1,5 +1,6 @@
 package com.italo.bankingapi.service;
 
+import com.italo.bankingapi.config.security.AuthenticatedCustomer;
 import com.italo.bankingapi.dto.account.*;
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
@@ -29,9 +30,11 @@ public class AccountService {
     private final AccountRepository accountRepository;
     private final CustomerRepository customerRepository;
     private final TransactionRepository transactionRepository;
+    private final AuthenticatedCustomer authenticatedCustomer;
 
     public AccountResponse createAccount(CreateAccountRequest request) {
         Customer customer = findCustomerOrThrow(request.getCustomerId());
+        authenticatedCustomer.requireOwner(customer.getId());
         String accountNumber = generateUniqueAccountNumber();
         Account account = Account.builder()
                 .customer(customer)
@@ -45,11 +48,11 @@ public class AccountService {
         return toAccountResponse(savedAccount);
     }
     public AccountResponse findAccountById(UUID id) {
-        Account account = findAccountOrThrow(id);
+        Account account = findOwnedAccountOrThrow(id);
         return toAccountResponse(account);
     }
     public List<AccountResponse> findAllAccounts() {
-        List<Account> accounts = accountRepository.findAll();
+        List<Account> accounts = accountRepository.findByCustomerId(authenticatedCustomer.getCustomer().getId());
         return accounts.stream().map(this::toAccountResponse).toList();
     }
     private String generateUniqueAccountNumber() {
@@ -63,7 +66,7 @@ public class AccountService {
         return accountNumber;
     }
     public AccountResponse deposit(UUID id, DepositRequest request) {
-        Account account = findAccountOrThrow(id);
+        Account account = findOwnedAccountOrThrow(id);
         account.setBalance(account.getBalance().add(request.getAmount()));
         Account updatedAccount = accountRepository.save(account);
         saveTransaction(
@@ -75,7 +78,7 @@ public class AccountService {
         return toAccountResponse(updatedAccount);
     }
     public AccountResponse withdraw(UUID id, WithdrawRequest request) {
-        Account account = findAccountOrThrow(id);
+        Account account = findOwnedAccountOrThrow(id);
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
             throw new InsufficientBalanceException("Insufficient balance.");
         }
@@ -93,7 +96,7 @@ public class AccountService {
     }
     @Transactional
     public AccountResponse transfer(TransferRequest request) {
-        Account sourceAccount = findAccountOrThrow(request.getSourceAccountId());
+        Account sourceAccount = findOwnedAccountOrThrow(request.getSourceAccountId());
         Account destinationAccount = findAccountOrThrow(request.getDestinationAccountId());
         if (sourceAccount.getId().equals(destinationAccount.getId())) {
             throw new ConflictException("Source and destination accounts must be different.");
@@ -140,6 +143,11 @@ public class AccountService {
         return accountRepository.findById(id)
                 .orElseThrow(() ->
                         new NotFoundException("Account not found."));
+    }
+    private Account findOwnedAccountOrThrow(UUID id) {
+        Account account = findAccountOrThrow(id);
+        authenticatedCustomer.requireOwner(account.getCustomer().getId());
+        return account;
     }
     private AccountResponse toAccountResponse(Account account) {
         return AccountResponse.builder()

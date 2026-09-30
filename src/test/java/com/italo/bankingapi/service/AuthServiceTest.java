@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -42,12 +43,13 @@ class AuthServiceTest {
         // Arrange
         LoginRequest request = new LoginRequest("italo@test.com", "plain-password");
         Customer customer = Customer.builder()
+                .id(UUID.randomUUID())
                 .email(request.getEmail())
                 .password("hashed-password")
                 .build();
         when(customerRepository.findByEmail(request.getEmail())).thenReturn(Optional.of(customer));
         when(passwordEncoder.matches(request.getPassword(), customer.getPassword())).thenReturn(true);
-        when(jwtService.generateToken(customer.getEmail())).thenReturn("jwt-token");
+        when(jwtService.generateToken(customer.getId())).thenReturn("jwt-token");
 
         // Act
         LoginResponse response = authService.login(request);
@@ -55,7 +57,7 @@ class AuthServiceTest {
         // Assert
         assertEquals("jwt-token", response.getToken());
         verify(passwordEncoder, times(1)).matches(request.getPassword(), customer.getPassword());
-        verify(jwtService, times(1)).generateToken(customer.getEmail());
+        verify(jwtService, times(1)).generateToken(customer.getId());
     }
 
     @Test
@@ -81,6 +83,7 @@ class AuthServiceTest {
         // Arrange
         LoginRequest request = new LoginRequest("italo@test.com", "wrong-password");
         Customer customer = Customer.builder()
+                .id(UUID.randomUUID())
                 .email(request.getEmail())
                 .password("hashed-password")
                 .build();

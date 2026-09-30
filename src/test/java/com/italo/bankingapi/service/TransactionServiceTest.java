@@ -2,12 +2,19 @@ package com.italo.bankingapi.service;
 
 import com.italo.bankingapi.dto.transaction.TransactionResponse;
 import com.italo.bankingapi.entity.Account;
+import com.italo.bankingapi.entity.Customer;
 import com.italo.bankingapi.entity.Transaction;
 import com.italo.bankingapi.enums.TransactionType;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.Spy;
+import com.italo.bankingapi.config.security.AuthenticatedCustomer;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -29,6 +36,23 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TransactionServiceTest {
+
+    private static final UUID OWNER_ID = UUID.fromString("d6125356-0ee7-4079-8a11-45644d135724");
+
+    @Spy
+    private AuthenticatedCustomer authenticatedCustomer = new AuthenticatedCustomer();
+
+    @BeforeEach
+    void authenticateCustomer() {
+        Customer customer = Customer.builder().id(OWNER_ID).build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(customer, null, List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Mock
     private TransactionRepository transactionRepository;
@@ -135,7 +159,8 @@ class TransactionServiceTest {
     }
 
     private Account createAccount() {
-        return Account.builder().id(UUID.randomUUID()).build();
+        return Account.builder().id(UUID.randomUUID())
+                .customer(Customer.builder().id(OWNER_ID).build()).build();
     }
 
     private Transaction createTransaction(TransactionType type, Account origin, Account destination) {

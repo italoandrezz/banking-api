@@ -34,9 +34,13 @@ public class AccountController {
 
     @Operation(
             summary = "Create a new account",
-            description = "Creates a new bank account for an existing customer."
+            description = "Creates an account for the authenticated customer. customerId must match the authenticated customer UUID."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "201",
                     description = "Account created successfully"
@@ -62,10 +66,14 @@ public class AccountController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
     @Operation(
-            summary = "List all accounts",
-            description = "Returns all bank accounts registered in the system."
+            summary = "List own accounts",
+            description = "Returns only accounts belonging to the authenticated customer."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Accounts retrieved successfully"
@@ -77,9 +85,13 @@ public class AccountController {
     }
     @Operation(
             summary = "Find account by ID",
-            description = "Returns a bank account using the provided UUID."
+            description = "Returns an account owned by the authenticated customer."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Account found successfully"
@@ -101,9 +113,13 @@ public class AccountController {
     }
     @Operation(
             summary = "Deposit money",
-            description = "Deposits money into an existing bank account."
+            description = "Deposits money only into an account owned by the authenticated customer."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Deposit completed successfully"
@@ -133,9 +149,13 @@ public class AccountController {
     }
     @Operation(
             summary = "Withdraw money",
-            description = "Withdraws money from an existing bank account."
+            description = "Withdraws money only from an account owned by the authenticated customer."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Withdrawal completed successfully"
@@ -172,9 +192,13 @@ public class AccountController {
     }
     @Operation(
             summary = "Transfer money",
-            description = "Transfers money between two bank accounts."
+            description = "The source account must belong to the authenticated customer. The destination may belong to another customer."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Transfer completed successfully"

@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -71,23 +72,28 @@ public class CustomerController {
     }
     @Operation(
             summary = "List all customers",
-            description = "Returns all customers registered in the banking system."
+            description = "Customer listing is unavailable. Authenticated customers receive 403; use your own customer ID."
     )
     @ApiResponses({
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "Customers retrieved successfully"
-            )
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Customer listing is not allowed",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
+    @SecurityRequirement(name = "bearerAuth")
     @GetMapping
     public ResponseEntity<List<CustomerResponse>> findAllCustomers() {
         return ResponseEntity.ok(customerService.findAllCustomers());
     }
     @Operation(
             summary = "Find customer by ID",
-            description = "Returns a customer using the provided UUID."
+            description = "Returns only the authenticated customer. Another existing customer ID returns 403."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Customer found successfully"
@@ -100,6 +106,7 @@ public class CustomerController {
                     )
             )
     })
+    @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/{id}")
     public ResponseEntity<CustomerResponse> findCustomerById(
             @Parameter(description = "Customer UUID")
@@ -109,9 +116,13 @@ public class CustomerController {
     }
     @Operation(
             summary = "Update customer",
-            description = "Updates the data of an existing customer."
+            description = "Updates only the authenticated customer. Another existing customer ID returns 403."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Customer updated successfully"
@@ -138,6 +149,7 @@ public class CustomerController {
                     )
             )
     })
+    @SecurityRequirement(name = "bearerAuth")
     @PutMapping("/{id}")
     public ResponseEntity<CustomerResponse> updateCustomer(
             @Parameter(description = "Customer UUID")
@@ -148,9 +160,13 @@ public class CustomerController {
     }
     @Operation(
             summary = "Delete customer",
-            description = "Deletes an existing customer."
+            description = "Deletes only the authenticated customer. Another existing customer ID returns 403."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "204",
                     description = "Customer deleted successfully"
@@ -163,6 +179,7 @@ public class CustomerController {
                     )
             )
     })
+    @SecurityRequirement(name = "bearerAuth")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCustomer(
             @Parameter(description = "Customer UUID")

@@ -32,9 +32,13 @@ public class TransactionController {
 
     @Operation(
             summary = "List account transactions",
-            description = "Returns all transactions related to the provided account UUID."
+            description = "Returns transactions only for an account owned by the authenticated customer."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Access denied",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "200",
                     description = "Transactions retrieved successfully"

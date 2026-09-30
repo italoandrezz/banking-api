@@ -18,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -41,11 +42,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         try {
             String token = authorizationHeader.substring(7);
-            String email = jwtService.extractEmail(token);
-            Customer customer = customerRepository.findByEmail(email)
+            UUID customerId = jwtService.extractCustomerId(token);
+            Customer customer = customerRepository.findById(customerId)
                     .orElse(null);
             if (customer == null ||
-                    !jwtService.isTokenValid(token, customer.getEmail())) {
+                    !jwtService.isTokenValid(token, customer.getId())) {
+                SecurityContextHolder.clearContext();
                 authenticationEntryPoint.commence(
                         request,
                         response,
@@ -61,7 +63,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     );
             SecurityContextHolder.getContext()
                     .setAuthentication(authentication);
-            filterChain.doFilter(request, response);
         } catch (JwtException | IllegalArgumentException exception) {
             SecurityContextHolder.clearContext();
             authenticationEntryPoint.commence(
@@ -69,6 +70,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     response,
                     new BadCredentialsException("Invalid or expired token.")
             );
+            return;
         }
+        filterChain.doFilter(request, response);
     }
 }
