@@ -2,6 +2,7 @@ package com.italo.bankingapi.exception.handler;
 
 import com.italo.bankingapi.dto.error.ErrorResponse;
 import com.italo.bankingapi.exception.ConflictException;
+import com.italo.bankingapi.exception.InvalidAmountException;
 import com.italo.bankingapi.exception.InsufficientBalanceException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.exception.UnauthorizedException;
@@ -18,6 +19,18 @@ import java.time.LocalDateTime;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(InvalidAmountException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidAmount(
+            InvalidAmountException exception, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+                .message(exception.getMessage())
+                .path(request.getRequestURI())
+                .build());
+    }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDeniedException(
