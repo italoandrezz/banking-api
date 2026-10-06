@@ -32,6 +32,34 @@ public class AccountController {
 
     private final AccountService accountService;
 
+    @Operation(summary = "Block own account", description = "Changes ACTIVE to BLOCKED. Balance and history are preserved.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Account blocked"),
+            @ApiResponse(responseCode = "400", description = "Invalid account UUID"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Account belongs to another customer"),
+            @ApiResponse(responseCode = "404", description = "Account not found"),
+            @ApiResponse(responseCode = "409", description = "Account is not ACTIVE")
+    })
+    @PatchMapping("/{id}/block")
+    public ResponseEntity<AccountResponse> block(@PathVariable UUID id) {
+        return ResponseEntity.ok(accountService.block(id));
+    }
+
+    @Operation(summary = "Unblock own account", description = "Changes BLOCKED to ACTIVE. CLOSED accounts cannot be reopened.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Account unblocked"),
+            @ApiResponse(responseCode = "400", description = "Invalid account UUID"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Account belongs to another customer"),
+            @ApiResponse(responseCode = "404", description = "Account not found"),
+            @ApiResponse(responseCode = "409", description = "Account is not BLOCKED")
+    })
+    @PatchMapping("/{id}/unblock")
+    public ResponseEntity<AccountResponse> unblock(@PathVariable UUID id) {
+        return ResponseEntity.ok(accountService.unblock(id));
+    }
+
     @Operation(
             summary = "Create a new account",
             description = "Creates an account for the authenticated customer. customerId must match the authenticated customer UUID."
@@ -113,7 +141,7 @@ public class AccountController {
     }
     @Operation(
             summary = "Deposit money",
-            description = "Deposits money only into an account owned by the authenticated customer."
+            description = "Deposits money only into an ACTIVE account owned by the authenticated customer."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
@@ -124,6 +152,8 @@ public class AccountController {
                     responseCode = "200",
                     description = "Deposit completed successfully"
             ),
+            @ApiResponse(responseCode = "409", description = "Account is not ACTIVE or resulting balance exceeds the limit",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "400",
                     description = "Invalid request data",
@@ -149,7 +179,7 @@ public class AccountController {
     }
     @Operation(
             summary = "Withdraw money",
-            description = "Withdraws money only from an account owned by the authenticated customer."
+            description = "Withdraws money only from an ACTIVE account owned by the authenticated customer."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
@@ -176,7 +206,7 @@ public class AccountController {
             ),
             @ApiResponse(
                     responseCode = "409",
-                    description = "Insufficient balance",
+                    description = "Insufficient balance or account is not ACTIVE",
                     content = @Content(
                             schema = @Schema(implementation = ErrorResponse.class)
                     )
@@ -192,7 +222,7 @@ public class AccountController {
     }
     @Operation(
             summary = "Transfer money",
-            description = "The source account must belong to the authenticated customer. The destination may belong to another customer."
+            description = "Both accounts must be ACTIVE. The source must belong to the authenticated customer; the destination may belong to another customer."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "401", description = "Authentication required or invalid token",
