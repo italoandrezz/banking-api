@@ -210,6 +210,30 @@ Invalid amounts return HTTP 400. Deposits or transfers that would exceed the
 maximum balance return HTTP 409 without changing balances or transaction history.
 The service also validates amounts when called directly, outside HTTP controllers.
 
+### Block and unblock accounts
+
+The authenticated owner can call `PATCH /accounts/{id}/block` to change an ACTIVE
+account to BLOCKED, and `PATCH /accounts/{id}/unblock` to restore a BLOCKED account
+to ACTIVE. Neither endpoint requires a body; both return HTTP 200 with the account.
+Repeated or invalid transitions return 409. CLOSED accounts cannot be reopened.
+Missing authentication returns 401, another owner's account returns 403, and a
+nonexistent account returns 404.
+
+Only ACTIVE accounts can deposit, withdraw, send or receive transfers. Other
+states return 409 without changing balances or history. Blocking is allowed with
+a nonzero balance; account lookup and transaction history remain available.
+Status changes update `updatedAt` and acquire the same pessimistic lock used by
+financial operations. A concurrent movement either commits before the block or
+sees the blocked state and fails. Blocking/unblocking does not create a financial
+transaction or remove previous history. Account closure is not implemented yet.
+
+```bash
+curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/block \
+  -H "Authorization: Bearer TOKEN"
+curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/unblock \
+  -H "Authorization: Bearer TOKEN"
+```
+
 ## Authentication and account ownership
 
 Register through `POST /customers`, then log in through `POST /auth/login` with e-mail and password.
@@ -250,6 +274,8 @@ Deposits represent the authenticated account holder's operation, not an external
 | POST | /accounts |
 | GET | /accounts |
 | GET | /accounts/{id} |
+| PATCH | /accounts/{id}/block |
+| PATCH | /accounts/{id}/unblock |
 | POST | /accounts/{id}/deposit |
 | POST | /accounts/{id}/withdraw |
 | POST | /accounts/transfer |
