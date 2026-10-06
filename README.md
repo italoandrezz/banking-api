@@ -201,6 +201,15 @@ has its own authentication context and service transaction. A start barrier and
 database lock contention ensure the operations overlap; bounded waits detect hangs.
 Run database tests sequentially against the dedicated test schema.
 
+### Monetary limits
+
+Deposits, withdrawals and transfers require a positive amount with at most 13
+integer digits and 2 decimal places (maximum `9999999999999.99`, matching
+`NUMERIC(15,2)`). Values are rejected rather than rounded; `1.000` is also rejected.
+Invalid amounts return HTTP 400. Deposits or transfers that would exceed the
+maximum balance return HTTP 409 without changing balances or transaction history.
+The service also validates amounts when called directly, outside HTTP controllers.
+
 ## Authentication and account ownership
 
 Register through `POST /customers`, then log in through `POST /auth/login` with e-mail and password.
