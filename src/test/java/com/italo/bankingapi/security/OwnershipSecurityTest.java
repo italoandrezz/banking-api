@@ -290,6 +290,43 @@ class OwnershipSecurityTest {
                         """.formatted(source.getId(), destination.getId()));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "0", "-0.01", "0.001", "0.015", "1.000", "10000000000000", "1e13"})
+    void shouldReturn400ForInvalidMoneyOnEveryOperation(String amount) throws Exception {
+        for (String operation : List.of("deposit", "withdraw", "transfer")) {
+            String path = operation.equals("transfer") ? "/accounts/transfer"
+                    : "/accounts/" + ownAccount.getId() + "/" + operation;
+            String body = """
+                    {"sourceAccountId":"%s","destinationAccountId":"%s","amount":%s}
+                    """.formatted(ownAccount.getId(), otherAccount.getId(), amount);
+            mvc.perform(post(path).header("Authorization", bearer)
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.path").value(path));
+        }
+        verify(accountRepository, never()).save(any());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"deposit", "transfer"})
+    void shouldReturn409WhenResultingBalanceExceedsDatabaseLimit(String operation) throws Exception {
+        Account credited = operation.equals("deposit") ? ownAccount : otherAccount;
+        credited.setBalance(new BigDecimal("9999999999999.99"));
+        String path = operation.equals("deposit") ? "/accounts/" + ownAccount.getId() + "/deposit" : "/accounts/transfer";
+        String body = """
+                {"sourceAccountId":"%s","destinationAccountId":"%s","amount":0.01}
+                """.formatted(ownAccount.getId(), otherAccount.getId());
+        mvc.perform(post(path).header("Authorization", bearer)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409));
+        assertEquals(new BigDecimal("9999999999999.99"), credited.getBalance());
+        if (operation.equals("transfer")) assertEquals(new BigDecimal("100.00"), ownAccount.getBalance());
+        verify(accountRepository, never()).save(any());
+        verify(transactionRepository, never()).save(any());
+    }
+
     private String signedToken(String subject, String secret, long expiration) {
         return Jwts.builder().subject(subject).expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8))).compact();

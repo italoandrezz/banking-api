@@ -7,6 +7,8 @@ import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
 import com.italo.bankingapi.enums.AccountStatus;
 import com.italo.bankingapi.enums.TransactionType;
+import com.italo.bankingapi.exception.InvalidAmountException;
+import com.italo.bankingapi.exception.ConflictException;
 import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -14,6 +16,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -156,6 +160,81 @@ class AccountServiceIntegrationTest {
 
     private TransferRequest transferRequest() {
         return new TransferRequest(source.getId(), destination.getId(), new BigDecimal("25.00"));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"0", "-0.01", "0.001", "0.015", "1.000", "10000000000000", "1E+13"})
+    void shouldRejectInvalidAmountsWithoutChangingBalancesOrHistory(String value) {
+        BigDecimal amount = value == null ? null : new BigDecimal(value);
+        assertThrows(InvalidAmountException.class,
+                () -> accountService.deposit(source.getId(), new DepositRequest(amount)));
+        assertThrows(InvalidAmountException.class,
+                () -> accountService.withdraw(source.getId(), new WithdrawRequest(amount)));
+        assertThrows(InvalidAmountException.class,
+                () -> accountService.transfer(new TransferRequest(source.getId(), destination.getId(), amount)));
+        assertBalance(source, "100.00");
+        assertBalance(destination, "50.00");
+        assertEquals(0, historyCount());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0.01", "1", "1.2", "10.23", "1E+1"})
+    void shouldPersistExactAmountsForAllOperations(String value) {
+        BigDecimal amount = new BigDecimal(value);
+        accountService.deposit(source.getId(), new DepositRequest(amount));
+        assertBalance(source, new BigDecimal("100.00").add(amount).toPlainString());
+        accountService.withdraw(source.getId(), new WithdrawRequest(amount));
+        assertBalance(source, "100.00");
+        accountService.transfer(new TransferRequest(source.getId(), destination.getId(), amount));
+        assertBalance(source, new BigDecimal("100.00").subtract(amount).toPlainString());
+        assertBalance(destination, new BigDecimal("50.00").add(amount).toPlainString());
+        assertEquals(3, historyCount());
+        assertEquals(List.of(amount.setScale(2), amount.setScale(2), amount.setScale(2)),
+                jdbcTemplate.queryForList("SELECT amount FROM banking_api_tests.transactions", BigDecimal.class));
+    }
+
+    @Test
+    void shouldAcceptMaximumAmountAndRejectDepositOverflow() {
+        BigDecimal maximum = new BigDecimal("9999999999999.99");
+        jdbcTemplate.update("UPDATE banking_api_tests.accounts SET balance = 0 WHERE id = ?", source.getId());
+        accountService.deposit(source.getId(), new DepositRequest(maximum));
+        assertBalance(source, maximum.toPlainString());
+        assertThrows(ConflictException.class,
+                () -> accountService.deposit(source.getId(), new DepositRequest(new BigDecimal("0.01"))));
+        assertBalance(source, maximum.toPlainString());
+        assertEquals(1, historyCount());
+        assertEquals(maximum, jdbcTemplate.queryForObject(
+                "SELECT amount FROM banking_api_tests.transactions", BigDecimal.class));
+        accountService.withdraw(source.getId(), new WithdrawRequest(maximum));
+        assertBalance(source, "0.00");
+        assertEquals(2, historyCount());
+    }
+
+    @Test
+    void shouldRejectDestinationOverflowWithoutDebitingSource() {
+        jdbcTemplate.update("UPDATE banking_api_tests.accounts SET balance = ? WHERE id = ?",
+                new BigDecimal("9999999999999.98"), destination.getId());
+        accountService.transfer(new TransferRequest(source.getId(), destination.getId(), new BigDecimal("0.01")));
+        var previousHistory = jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions");
+        assertThrows(ConflictException.class,
+                () -> accountService.transfer(new TransferRequest(source.getId(), destination.getId(), new BigDecimal("0.01"))));
+        assertBalance(source, "99.99");
+        assertBalance(destination, "9999999999999.99");
+        assertEquals(previousHistory, jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions"));
+    }
+
+    @Test
+    void shouldTransferMaximumAmountExactly() {
+        BigDecimal maximum = new BigDecimal("9999999999999.99");
+        jdbcTemplate.update("UPDATE banking_api_tests.accounts SET balance = ? WHERE id = ?", maximum, source.getId());
+        jdbcTemplate.update("UPDATE banking_api_tests.accounts SET balance = 0 WHERE id = ?", destination.getId());
+        accountService.transfer(new TransferRequest(source.getId(), destination.getId(), maximum));
+        assertBalance(source, "0.00");
+        assertBalance(destination, maximum.toPlainString());
+        assertEquals(1, historyCount());
+        assertEquals(maximum, jdbcTemplate.queryForObject(
+                "SELECT amount FROM banking_api_tests.transactions", BigDecimal.class));
     }
 
     private void moveMoney(TransactionType type) {
