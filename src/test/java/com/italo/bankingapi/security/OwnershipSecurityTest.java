@@ -291,6 +291,66 @@ class OwnershipSecurityTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"block", "unblock"})
+    void shouldChangeOwnAccountStatus(String action) throws Exception {
+        ownAccount.setStatus(action.equals("block") ? AccountStatus.ACTIVE : AccountStatus.BLOCKED);
+        when(accountRepository.save(any(Account.class))).thenAnswer(call -> call.getArgument(0));
+        mvc.perform(patch("/accounts/{id}/" + action, ownAccount.getId()).header("Authorization", bearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(action.equals("block") ? "BLOCKED" : "ACTIVE"))
+                .andExpect(jsonPath("$.balance").value(100.00));
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"block", "unblock"})
+    void shouldProtectStatusEndpoints(String action) throws Exception {
+        mvc.perform(patch("/accounts/{id}/" + action, ownAccount.getId()))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(patch("/accounts/{id}/" + action, otherAccount.getId()).header("Authorization", bearer))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.status").value(403));
+        mvc.perform(patch("/accounts/{id}/" + action, UUID.randomUUID()).header("Authorization", bearer))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404));
+        mvc.perform(patch("/accounts/invalid/" + action).header("Authorization", bearer))
+                .andExpect(status().isBadRequest());
+        assertEquals(AccountStatus.ACTIVE, otherAccount.getStatus());
+        verify(accountRepository, never()).save(any());
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"block", "unblock"})
+    void shouldReturnConflictForInvalidStatusTransition(String action) throws Exception {
+        for (AccountStatus initial : List.of(action.equals("block") ? AccountStatus.BLOCKED : AccountStatus.ACTIVE,
+                AccountStatus.CLOSED)) {
+            ownAccount.setStatus(initial);
+            mvc.perform(patch("/accounts/{id}/" + action, ownAccount.getId()).header("Authorization", bearer))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409));
+            assertEquals(initial, ownAccount.getStatus());
+        }
+        verify(accountRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"deposit", "withdraw", "transfer"})
+    void shouldRejectBlockedAccountMovementsButAllowReading(String operation) throws Exception {
+        ownAccount.setStatus(AccountStatus.BLOCKED);
+        String path = operation.equals("transfer") ? "/accounts/transfer"
+                : "/accounts/" + ownAccount.getId() + "/" + operation;
+        mvc.perform(post(path).header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"sourceAccountId":"%s","destinationAccountId":"%s","amount":1.00}
+                                """.formatted(ownAccount.getId(), otherAccount.getId())))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409));
+        mvc.perform(get("/accounts/{id}", ownAccount.getId()).header("Authorization", bearer))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("BLOCKED"));
+        mvc.perform(get("/accounts/{id}/transactions", ownAccount.getId()).header("Authorization", bearer))
+                .andExpect(status().isOk());
+        verify(accountRepository, never()).save(any());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"null", "0", "-0.01", "0.001", "0.015", "1.000", "10000000000000", "1e13"})
     void shouldReturn400ForInvalidMoneyOnEveryOperation(String amount) throws Exception {
         for (String operation : List.of("deposit", "withdraw", "transfer")) {
