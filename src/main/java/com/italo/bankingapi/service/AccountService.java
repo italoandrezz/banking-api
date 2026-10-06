@@ -8,6 +8,7 @@ import com.italo.bankingapi.entity.Transaction;
 import com.italo.bankingapi.enums.AccountStatus;
 import com.italo.bankingapi.enums.TransactionType;
 import com.italo.bankingapi.exception.ConflictException;
+import com.italo.bankingapi.exception.InvalidAmountException;
 import com.italo.bankingapi.exception.InsufficientBalanceException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.repository.AccountRepository;
@@ -26,6 +27,7 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 @RequiredArgsConstructor
 public class AccountService {
+    private static final BigDecimal MAX_BALANCE = new BigDecimal("9999999999999.99");
 
     private final AccountRepository accountRepository;
     private final CustomerRepository customerRepository;
@@ -67,9 +69,10 @@ public class AccountService {
     }
     @Transactional
     public AccountResponse deposit(UUID id, DepositRequest request) {
+        validateAmount(request.getAmount());
         Account account = findAccountForUpdateOrThrow(id);
         authenticatedCustomer.requireOwner(account.getCustomer().getId());
-        account.setBalance(account.getBalance().add(request.getAmount()));
+        account.setBalance(creditedBalance(account, request.getAmount()));
         Account updatedAccount = accountRepository.save(account);
         saveTransaction(
                 updatedAccount,
@@ -81,6 +84,7 @@ public class AccountService {
     }
     @Transactional
     public AccountResponse withdraw(UUID id, WithdrawRequest request) {
+        validateAmount(request.getAmount());
         Account account = findAccountForUpdateOrThrow(id);
         authenticatedCustomer.requireOwner(account.getCustomer().getId());
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
@@ -100,6 +104,7 @@ public class AccountService {
     }
     @Transactional
     public AccountResponse transfer(TransferRequest request) {
+        validateAmount(request.getAmount());
         UUID sourceId = request.getSourceAccountId();
         UUID destinationId = request.getDestinationAccountId();
         // Preserve source existence/ownership checks before accessing the destination.
@@ -122,8 +127,9 @@ public class AccountService {
         if (sourceAccount.getBalance().compareTo(request.getAmount()) < 0) {
             throw new InsufficientBalanceException("Insufficient balance.");
         }
+        BigDecimal destinationBalance = creditedBalance(destinationAccount, request.getAmount());
         sourceAccount.setBalance(sourceAccount.getBalance().subtract(request.getAmount()));
-        destinationAccount.setBalance(destinationAccount.getBalance().add(request.getAmount()));
+        destinationAccount.setBalance(destinationBalance);
         accountRepository.save(sourceAccount);
         accountRepository.save(destinationAccount);
         saveTransaction(
@@ -134,6 +140,23 @@ public class AccountService {
                 "Account transfer");
         return toAccountResponse(sourceAccount);
     }
+    private void validateAmount(BigDecimal amount) {
+        // Match NUMERIC(15,2) without rounding, including direct service calls.
+        if (amount == null || amount.signum() <= 0 || amount.scale() > 2
+                || amount.compareTo(MAX_BALANCE) > 0) {
+            throw new InvalidAmountException(
+                    "Amount must be positive, have at most 2 decimal places and not exceed 9999999999999.99.");
+        }
+    }
+
+    private BigDecimal creditedBalance(Account account, BigDecimal amount) {
+        BigDecimal balance = account.getBalance().add(amount);
+        if (balance.compareTo(MAX_BALANCE) > 0) {
+            throw new ConflictException("Resulting balance exceeds the maximum of 9999999999999.99.");
+        }
+        return balance;
+    }
+
     private void saveTransaction(
             Account originAccount,
             Account destinationAccount,
