@@ -7,6 +7,9 @@ import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Customer;
 import com.italo.bankingapi.enums.AccountStatus;
 import com.italo.bankingapi.exception.InsufficientBalanceException;
+import com.italo.bankingapi.exception.ConflictException;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -108,6 +111,61 @@ class AccountConcurrencyIntegrationTest {
         } catch (InsufficientBalanceException expected) {
             return false;
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"deposit", "withdraw", "transfer", "incoming-transfer"})
+    void shouldSerializeBlockingWithFinancialOperations(String operation) throws Exception {
+        // Either the movement commits before the block, or it sees BLOCKED and fails.
+        // In both cases the final status must stay BLOCKED, with matching balance/history.
+        List<Boolean> results = concurrently(owner, () -> {
+            accountService.block(a.getId());
+            return true;
+        }, operation.equals("incoming-transfer") ? recipient : owner, () -> {
+            try {
+                switch (operation) {
+                    case "deposit" -> accountService.deposit(a.getId(), new DepositRequest(new BigDecimal("10.00")));
+                    case "withdraw" -> accountService.withdraw(a.getId(), new WithdrawRequest(new BigDecimal("10.00")));
+                    case "transfer" -> transfer(a, b, "10.00");
+                    default -> transfer(b, a, "10.00");
+                }
+                return true;
+            } catch (ConflictException expected) {
+                return false;
+            }
+        });
+        assertTrue(results.get(0));
+        assertEquals("BLOCKED", jdbc.queryForObject(
+                "SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, a.getId()));
+        if (!results.get(1)) {
+            assertBalances("100.00", "50.00");
+            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM banking_api_tests.transactions", Integer.class));
+        } else {
+            switch (operation) {
+                case "deposit" -> { assertBalances("110.00", "50.00"); assertHistory("DEPOSIT", List.of(new BigDecimal("10.00"))); }
+                case "withdraw" -> { assertBalances("90.00", "50.00"); assertHistory("WITHDRAW", List.of(new BigDecimal("10.00"))); }
+                case "transfer" -> { assertBalances("90.00", "60.00"); assertHistory("TRANSFER", List.of(new BigDecimal("10.00"))); assertTransfer(a, b, "10.00"); }
+                default -> { assertBalances("110.00", "40.00"); assertHistory("TRANSFER", List.of(new BigDecimal("10.00"))); assertTransfer(b, a, "10.00"); }
+            }
+        }
+    }
+
+    @Test
+    void shouldAllowOnlyOneConcurrentBlock() throws Exception {
+        Callable<Boolean> block = () -> {
+            try {
+                accountService.block(a.getId());
+                return true;
+            } catch (ConflictException expected) {
+                return false;
+            }
+        };
+        List<Boolean> results = concurrently(owner, block, owner, block);
+        assertEquals(1, results.stream().filter(Boolean::booleanValue).count());
+        assertEquals("BLOCKED", jdbc.queryForObject(
+                "SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, a.getId()));
+        assertBalances("100.00", "50.00");
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM banking_api_tests.transactions", Integer.class));
     }
 
     private Object transfer(Account source, Account destination, String amount) {

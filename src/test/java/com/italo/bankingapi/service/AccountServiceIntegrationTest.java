@@ -162,6 +162,65 @@ class AccountServiceIntegrationTest {
         return new TransferRequest(source.getId(), destination.getId(), new BigDecimal("25.00"));
     }
 
+    @Test
+    void shouldBlockAndUnblockWithoutChangingBalanceOrHistory() {
+        accountService.deposit(source.getId(), new DepositRequest(new BigDecimal("1.00")));
+        var history = jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions");
+        assertEquals(AccountStatus.BLOCKED, accountService.block(source.getId()).getStatus());
+        assertEquals("BLOCKED", jdbcTemplate.queryForObject(
+                "SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, source.getId()));
+        assertNotNull(jdbcTemplate.queryForObject(
+                "SELECT updated_at FROM banking_api_tests.accounts WHERE id = ?", LocalDateTime.class, source.getId()));
+        assertThrows(ConflictException.class, () -> accountService.block(source.getId()));
+        assertBalance(source, "101.00");
+        assertEquals(history, jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions"));
+        assertEquals(AccountStatus.ACTIVE, accountService.unblock(source.getId()).getStatus());
+        assertEquals("ACTIVE", jdbcTemplate.queryForObject(
+                "SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, source.getId()));
+        assertThrows(ConflictException.class, () -> accountService.unblock(source.getId()));
+        assertEquals(history, jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions"));
+        accountService.withdraw(source.getId(), new WithdrawRequest(new BigDecimal("1.00")));
+        assertBalance(source, "100.00");
+        assertEquals(2, historyCount());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AccountStatus.class, names = {"BLOCKED", "CLOSED"})
+    void shouldRejectEveryOutgoingOperationOnInactiveAccount(AccountStatus status) {
+        jdbcTemplate.update("UPDATE banking_api_tests.accounts SET status = ?::account_status WHERE id = ?",
+                status.name(), source.getId());
+        assertThrows(ConflictException.class,
+                () -> accountService.deposit(source.getId(), new DepositRequest(new BigDecimal("1.00"))));
+        assertThrows(ConflictException.class,
+                () -> accountService.withdraw(source.getId(), new WithdrawRequest(new BigDecimal("1.00"))));
+        assertThrows(ConflictException.class, () -> accountService.transfer(transferRequest()));
+        assertBalance(source, "100.00");
+        assertBalance(destination, "50.00");
+        assertEquals(0, historyCount());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AccountStatus.class, names = {"BLOCKED", "CLOSED"})
+    void shouldRejectTransferToInactiveDestinationWithoutDebit(AccountStatus status) {
+        jdbcTemplate.update("UPDATE banking_api_tests.accounts SET status = ?::account_status WHERE id = ?",
+                status.name(), destination.getId());
+        assertThrows(ConflictException.class, () -> accountService.transfer(transferRequest()));
+        assertBalance(source, "100.00");
+        assertBalance(destination, "50.00");
+        assertEquals(0, historyCount());
+    }
+
+    @Test
+    void shouldNeverReopenClosedAccount() {
+        jdbcTemplate.update("UPDATE banking_api_tests.accounts SET status = 'CLOSED' WHERE id = ?", source.getId());
+        assertThrows(ConflictException.class, () -> accountService.block(source.getId()));
+        assertThrows(ConflictException.class, () -> accountService.unblock(source.getId()));
+        assertEquals("CLOSED", jdbcTemplate.queryForObject(
+                "SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, source.getId()));
+        assertBalance(source, "100.00");
+        assertEquals(0, historyCount());
+    }
+
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"0", "-0.01", "0.001", "0.015", "1.000", "10000000000000", "1E+13"})

@@ -57,6 +57,34 @@ public class AccountService {
         List<Account> accounts = accountRepository.findByCustomerId(authenticatedCustomer.getCustomer().getId());
         return accounts.stream().map(this::toAccountResponse).toList();
     }
+
+    @Transactional
+    public AccountResponse block(UUID id) {
+        return changeStatus(id, AccountStatus.ACTIVE, AccountStatus.BLOCKED);
+    }
+
+    @Transactional
+    public AccountResponse unblock(UUID id) {
+        return changeStatus(id, AccountStatus.BLOCKED, AccountStatus.ACTIVE);
+    }
+
+    private AccountResponse changeStatus(UUID id, AccountStatus expected, AccountStatus target) {
+        // Share the financial-operation lock so status and balance changes serialize.
+        Account account = findAccountForUpdateOrThrow(id);
+        authenticatedCustomer.requireOwner(account.getCustomer().getId());
+        if (account.getStatus() != expected) {
+            throw new ConflictException("Account must be " + expected + " to become " + target + ".");
+        }
+        account.setStatus(target);
+        account.setUpdatedAt(LocalDateTime.now());
+        return toAccountResponse(accountRepository.save(account));
+    }
+
+    private void requireActive(Account account) {
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new ConflictException("Account must be ACTIVE for financial operations.");
+        }
+    }
     private String generateUniqueAccountNumber() {
         String accountNumber;
         do {
@@ -72,6 +100,7 @@ public class AccountService {
         validateAmount(request.getAmount());
         Account account = findAccountForUpdateOrThrow(id);
         authenticatedCustomer.requireOwner(account.getCustomer().getId());
+        requireActive(account);
         account.setBalance(creditedBalance(account, request.getAmount()));
         Account updatedAccount = accountRepository.save(account);
         saveTransaction(
@@ -87,6 +116,7 @@ public class AccountService {
         validateAmount(request.getAmount());
         Account account = findAccountForUpdateOrThrow(id);
         authenticatedCustomer.requireOwner(account.getCustomer().getId());
+        requireActive(account);
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
             throw new InsufficientBalanceException("Insufficient balance.");
         }
@@ -121,6 +151,8 @@ public class AccountService {
         Account sourceAccount = sourceFirst ? first : second;
         Account destinationAccount = sourceFirst ? second : first;
         authenticatedCustomer.requireOwner(sourceAccount.getCustomer().getId());
+        requireActive(sourceAccount);
+        requireActive(destinationAccount);
         if (sourceAccount.getId().equals(destinationAccount.getId())) {
             throw new ConflictException("Source and destination accounts must be different.");
         }
