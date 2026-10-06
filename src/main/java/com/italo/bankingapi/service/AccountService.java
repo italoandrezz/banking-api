@@ -67,7 +67,8 @@ public class AccountService {
     }
     @Transactional
     public AccountResponse deposit(UUID id, DepositRequest request) {
-        Account account = findOwnedAccountOrThrow(id);
+        Account account = findAccountForUpdateOrThrow(id);
+        authenticatedCustomer.requireOwner(account.getCustomer().getId());
         account.setBalance(account.getBalance().add(request.getAmount()));
         Account updatedAccount = accountRepository.save(account);
         saveTransaction(
@@ -80,7 +81,8 @@ public class AccountService {
     }
     @Transactional
     public AccountResponse withdraw(UUID id, WithdrawRequest request) {
-        Account account = findOwnedAccountOrThrow(id);
+        Account account = findAccountForUpdateOrThrow(id);
+        authenticatedCustomer.requireOwner(account.getCustomer().getId());
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
             throw new InsufficientBalanceException("Insufficient balance.");
         }
@@ -98,8 +100,22 @@ public class AccountService {
     }
     @Transactional
     public AccountResponse transfer(TransferRequest request) {
-        Account sourceAccount = findOwnedAccountOrThrow(request.getSourceAccountId());
-        Account destinationAccount = findAccountOrThrow(request.getDestinationAccountId());
+        UUID sourceId = request.getSourceAccountId();
+        UUID destinationId = request.getDestinationAccountId();
+        // Preserve source existence/ownership checks before accessing the destination.
+        // Read only the owner ID so no stale Account balance enters the persistence context.
+        UUID ownerId = accountRepository.findCustomerIdByAccountId(sourceId)
+                .orElseThrow(() -> new NotFoundException("Account not found."));
+        authenticatedCustomer.requireOwner(ownerId);
+        // Both A -> B and B -> A acquire locks in the same UUID order.
+        // This avoids a cycle where each transfer holds the other's next lock.
+        boolean sourceFirst = sourceId.compareTo(destinationId) <= 0;
+        Account first = findAccountForUpdateOrThrow(sourceFirst ? sourceId : destinationId);
+        Account second = sourceId.equals(destinationId) ? first
+                : findAccountForUpdateOrThrow(sourceFirst ? destinationId : sourceId);
+        Account sourceAccount = sourceFirst ? first : second;
+        Account destinationAccount = sourceFirst ? second : first;
+        authenticatedCustomer.requireOwner(sourceAccount.getCustomer().getId());
         if (sourceAccount.getId().equals(destinationAccount.getId())) {
             throw new ConflictException("Source and destination accounts must be different.");
         }
@@ -145,6 +161,10 @@ public class AccountService {
         return accountRepository.findById(id)
                 .orElseThrow(() ->
                         new NotFoundException("Account not found."));
+    }
+    private Account findAccountForUpdateOrThrow(UUID id) {
+        return accountRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new NotFoundException("Account not found."));
     }
     private Account findOwnedAccountOrThrow(UUID id) {
         Account account = findAccountOrThrow(id);

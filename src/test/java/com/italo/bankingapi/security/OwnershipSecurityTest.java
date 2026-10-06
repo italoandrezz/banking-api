@@ -79,6 +79,10 @@ class OwnershipSecurityTest {
         when(customerRepository.findById(other.getId())).thenReturn(Optional.of(other));
         when(accountRepository.findById(ownAccount.getId())).thenReturn(Optional.of(ownAccount));
         when(accountRepository.findById(otherAccount.getId())).thenReturn(Optional.of(otherAccount));
+        when(accountRepository.findByIdForUpdate(ownAccount.getId())).thenReturn(Optional.of(ownAccount));
+        when(accountRepository.findByIdForUpdate(otherAccount.getId())).thenReturn(Optional.of(otherAccount));
+        when(accountRepository.findCustomerIdByAccountId(ownAccount.getId())).thenReturn(Optional.of(owner.getId()));
+        when(accountRepository.findCustomerIdByAccountId(otherAccount.getId())).thenReturn(Optional.of(other.getId()));
     }
 
     @Test

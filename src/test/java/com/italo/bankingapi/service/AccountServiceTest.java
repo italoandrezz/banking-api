@@ -17,6 +17,8 @@ import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.CustomerRepository;
 import com.italo.bankingapi.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.mockito.Spy;
@@ -43,6 +45,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
 
 @ExtendWith(MockitoExtension.class)
 class AccountServiceTest {
@@ -198,7 +201,7 @@ class AccountServiceTest {
         // Arrange
         Account account = createAccount(new BigDecimal("100.00"));
         DepositRequest request = new DepositRequest(new BigDecimal("50.00"));
-        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(accountRepository.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
         when(accountRepository.save(account)).thenReturn(account);
 
         // Act
@@ -215,7 +218,7 @@ class AccountServiceTest {
         // Arrange
         UUID accountId = UUID.randomUUID();
         DepositRequest request = new DepositRequest(new BigDecimal("50.00"));
-        when(accountRepository.findById(accountId)).thenReturn(Optional.empty());
+        when(accountRepository.findByIdForUpdate(accountId)).thenReturn(Optional.empty());
 
         // Act
         NotFoundException exception = assertThrows(
@@ -234,7 +237,7 @@ class AccountServiceTest {
         // Arrange
         Account account = createAccount(new BigDecimal("100.00"));
         WithdrawRequest request = new WithdrawRequest(new BigDecimal("40.00"));
-        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(accountRepository.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
         when(accountRepository.save(account)).thenReturn(account);
 
         // Act
@@ -251,7 +254,7 @@ class AccountServiceTest {
         // Arrange
         Account account = createAccount(new BigDecimal("100.00"));
         WithdrawRequest request = new WithdrawRequest(new BigDecimal("100.00"));
-        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(accountRepository.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
         when(accountRepository.save(account)).thenReturn(account);
 
         // Act
@@ -267,7 +270,7 @@ class AccountServiceTest {
         // Arrange
         Account account = createAccount(new BigDecimal("100.00"));
         WithdrawRequest request = new WithdrawRequest(new BigDecimal("100.01"));
-        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(accountRepository.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
 
         // Act
         InsufficientBalanceException exception = assertThrows(
@@ -288,8 +291,9 @@ class AccountServiceTest {
         Account destination = createAccount(new BigDecimal("20.00"));
         destination.setCustomer(Customer.builder().id(UUID.randomUUID()).build());
         TransferRequest request = new TransferRequest(source.getId(), destination.getId(), new BigDecimal("40.00"));
-        when(accountRepository.findById(source.getId())).thenReturn(Optional.of(source));
-        when(accountRepository.findById(destination.getId())).thenReturn(Optional.of(destination));
+        when(accountRepository.findCustomerIdByAccountId(source.getId())).thenReturn(Optional.of(OWNER_ID));
+        when(accountRepository.findByIdForUpdate(source.getId())).thenReturn(Optional.of(source));
+        when(accountRepository.findByIdForUpdate(destination.getId())).thenReturn(Optional.of(destination));
 
         // Act
         AccountResponse response = accountService.transfer(request);
@@ -308,7 +312,8 @@ class AccountServiceTest {
         // Arrange
         Account account = createAccount(new BigDecimal("100.00"));
         TransferRequest request = new TransferRequest(account.getId(), account.getId(), new BigDecimal("40.00"));
-        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(accountRepository.findCustomerIdByAccountId(account.getId())).thenReturn(Optional.of(OWNER_ID));
+        when(accountRepository.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
 
         // Act
         ConflictException exception = assertThrows(
@@ -318,9 +323,31 @@ class AccountServiceTest {
 
         // Assert
         assertEquals("Source and destination accounts must be different.", exception.getMessage());
-        verify(accountRepository, times(2)).findById(account.getId());
+        verify(accountRepository, times(1)).findByIdForUpdate(account.getId());
         verify(accountRepository, never()).save(any(Account.class));
         verify(transactionRepository, never()).save(any(Transaction.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void shouldLockTransferAccountsInUuidOrderRegardlessOfDirection(boolean sourceFirst) {
+        Account lower = createAccount(new BigDecimal("100.00"));
+        Account higher = createAccount(new BigDecimal("100.00"));
+        lower.setId(new UUID(0, 1));
+        higher.setId(new UUID(0, 2));
+        Account source = sourceFirst ? lower : higher;
+        Account destination = sourceFirst ? higher : lower;
+        when(accountRepository.findCustomerIdByAccountId(source.getId())).thenReturn(Optional.of(OWNER_ID));
+        when(accountRepository.findByIdForUpdate(lower.getId())).thenReturn(Optional.of(lower));
+        when(accountRepository.findByIdForUpdate(higher.getId())).thenReturn(Optional.of(higher));
+
+        accountService.transfer(new TransferRequest(source.getId(), destination.getId(), new BigDecimal("10.00")));
+
+        var order = inOrder(accountRepository);
+        order.verify(accountRepository).findByIdForUpdate(lower.getId());
+        order.verify(accountRepository).findByIdForUpdate(higher.getId());
+        order.verify(accountRepository).save(source);
+        order.verify(accountRepository).save(destination);
     }
 
     @Test
@@ -328,7 +355,7 @@ class AccountServiceTest {
         // Arrange
         UUID sourceId = UUID.randomUUID();
         TransferRequest request = new TransferRequest(sourceId, UUID.randomUUID(), new BigDecimal("40.00"));
-        when(accountRepository.findById(sourceId)).thenReturn(Optional.empty());
+        when(accountRepository.findCustomerIdByAccountId(sourceId)).thenReturn(Optional.empty());
 
         // Act
         NotFoundException exception = assertThrows(
@@ -346,10 +373,11 @@ class AccountServiceTest {
     void shouldThrowNotFoundExceptionWhenDestinationAccountDoesNotExist() {
         // Arrange
         Account source = createAccount(new BigDecimal("100.00"));
-        UUID destinationId = UUID.randomUUID();
+        UUID destinationId = new UUID(Long.MAX_VALUE, Long.MAX_VALUE);
         TransferRequest request = new TransferRequest(source.getId(), destinationId, new BigDecimal("40.00"));
-        when(accountRepository.findById(source.getId())).thenReturn(Optional.of(source));
-        when(accountRepository.findById(destinationId)).thenReturn(Optional.empty());
+        when(accountRepository.findCustomerIdByAccountId(source.getId())).thenReturn(Optional.of(OWNER_ID));
+        when(accountRepository.findByIdForUpdate(source.getId())).thenReturn(Optional.of(source));
+        when(accountRepository.findByIdForUpdate(destinationId)).thenReturn(Optional.empty());
 
         // Act
         NotFoundException exception = assertThrows(
@@ -370,8 +398,9 @@ class AccountServiceTest {
         Account destination = createAccount(new BigDecimal("20.00"));
         destination.setCustomer(Customer.builder().id(UUID.randomUUID()).build());
         TransferRequest request = new TransferRequest(source.getId(), destination.getId(), new BigDecimal("40.00"));
-        when(accountRepository.findById(source.getId())).thenReturn(Optional.of(source));
-        when(accountRepository.findById(destination.getId())).thenReturn(Optional.of(destination));
+        when(accountRepository.findCustomerIdByAccountId(source.getId())).thenReturn(Optional.of(OWNER_ID));
+        when(accountRepository.findByIdForUpdate(source.getId())).thenReturn(Optional.of(source));
+        when(accountRepository.findByIdForUpdate(destination.getId())).thenReturn(Optional.of(destination));
 
         // Act
         InsufficientBalanceException exception = assertThrows(

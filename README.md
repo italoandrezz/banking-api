@@ -191,8 +191,15 @@ The suite checks successful operations, complete rollback and preservation of
 previously committed transactions. Fixtures and failure triggers are removed
 between tests; run these database tests sequentially.
 
-Atomicity does not protect against concurrent balance updates. Concurrency
-control remains a separate task.
+Balance-changing operations acquire JPA pessimistic write locks until commit or
+rollback. Transfers lock both accounts in UUID order, including crossed transfers,
+to avoid opposite lock acquisition orders. Read-only account queries do not lock.
+
+`AccountConcurrencyIntegrationTest` checks simultaneous withdrawals, deposits,
+same-direction transfers and crossed transfers against PostgreSQL. Each worker
+has its own authentication context and service transaction. A start barrier and
+database lock contention ensure the operations overlap; bounded waits detect hangs.
+Run database tests sequentially against the dedicated test schema.
 
 ## Authentication and account ownership
 
