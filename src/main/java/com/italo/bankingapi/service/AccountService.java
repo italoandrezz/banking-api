@@ -68,12 +68,20 @@ public class AccountService {
         return changeStatus(id, AccountStatus.BLOCKED, AccountStatus.ACTIVE);
     }
 
+    @Transactional
+    public AccountResponse close(UUID id) {
+        return changeStatus(id, AccountStatus.ACTIVE, AccountStatus.CLOSED);
+    }
+
     private AccountResponse changeStatus(UUID id, AccountStatus expected, AccountStatus target) {
         // Share the financial-operation lock so status and balance changes serialize.
         Account account = findAccountForUpdateOrThrow(id);
         authenticatedCustomer.requireOwner(account.getCustomer().getId());
         if (account.getStatus() != expected) {
             throw new ConflictException("Account must be " + expected + " to become " + target + ".");
+        }
+        if (target == AccountStatus.CLOSED && account.getBalance().signum() != 0) {
+            throw new ConflictException("Account balance must be zero to close the account.");
         }
         account.setStatus(target);
         account.setUpdatedAt(LocalDateTime.now());

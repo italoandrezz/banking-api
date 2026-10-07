@@ -303,7 +303,7 @@ class OwnershipSecurityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"block", "unblock"})
+    @ValueSource(strings = {"block", "unblock", "close"})
     void shouldProtectStatusEndpoints(String action) throws Exception {
         mvc.perform(patch("/accounts/{id}/" + action, ownAccount.getId()))
                 .andExpect(status().isUnauthorized());
@@ -314,6 +314,33 @@ class OwnershipSecurityTest {
         mvc.perform(patch("/accounts/invalid/" + action).header("Authorization", bearer))
                 .andExpect(status().isBadRequest());
         assertEquals(AccountStatus.ACTIVE, otherAccount.getStatus());
+        verify(accountRepository, never()).save(any());
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
+    void shouldCloseOwnAccountAndKeepReadAccess() throws Exception {
+        ownAccount.setBalance(BigDecimal.ZERO);
+        when(accountRepository.save(any(Account.class))).thenAnswer(call -> call.getArgument(0));
+        mvc.perform(patch("/accounts/{id}/close", ownAccount.getId()).header("Authorization", bearer))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.balance").value(0));
+        mvc.perform(get("/accounts/{id}", ownAccount.getId()).header("Authorization", bearer))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CLOSED"));
+        mvc.perform(get("/accounts/{id}/transactions", ownAccount.getId()).header("Authorization", bearer))
+                .andExpect(status().isOk());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldReturn409ForInvalidClosure() throws Exception {
+        for (AccountStatus initial : AccountStatus.values()) {
+            ownAccount.setStatus(initial);
+            ownAccount.setBalance(initial == AccountStatus.ACTIVE ? new BigDecimal("0.01") : BigDecimal.ZERO);
+            mvc.perform(patch("/accounts/{id}/close", ownAccount.getId()).header("Authorization", bearer))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409));
+            assertEquals(initial, ownAccount.getStatus());
+        }
         verify(accountRepository, never()).save(any());
         verifyNoInteractions(transactionRepository);
     }
