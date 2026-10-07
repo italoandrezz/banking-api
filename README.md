@@ -311,6 +311,45 @@ Deposits represent the authenticated account holder's operation, not an external
 |---------|----------|
 | GET | /accounts/{id}/transactions |
 
+### Paginated account statement
+
+`GET /accounts/{id}/transactions?page=0&size=20&startDate=2026-10-01&endDate=2026-10-31&type=TRANSFER`
+
+Requires the account owner's bearer token. Includes outgoing and received transfers;
+history remains available for blocked and closed accounts.
+
+| Parameter | Default | Rules |
+|-----------|---------|-------|
+| `page` | `0` | Zero-based, nonnegative; `page * size` must fit a signed 32-bit integer |
+| `size` | `20` | Between 1 and 100 |
+| `startDate` | None | Inclusive date in `yyyy-MM-dd` format |
+| `endDate` | None | Inclusive date in `yyyy-MM-dd` format; cannot precede `startDate` |
+| `type` | All | `DEPOSIT`, `WITHDRAW` or `TRANSFER` (case-sensitive) |
+
+Filters are optional and can be combined. Dates use the calendar of the stored
+transaction timestamp (without timezone conversion). The end date includes the
+whole day, excluding midnight of the following day. Invalid parameters return `400`.
+
+**Breaking response change:** this endpoint now returns a page object instead of a
+bare array. Clients must read transactions from `content` and request additional pages.
+Each item keeps the existing transaction fields.
+
+```json
+{
+  "content": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 0,
+  "totalPages": 0
+}
+```
+
+Results are ordered by `createdAt DESC, id DESC`, including a UUID tie-breaker for
+equal timestamps. Totals reflect the account and selected filters. Pages beyond
+the last page return empty `content` with the matching totals. Separate page
+requests do not share a snapshot: newly inserted transactions can shift offsets.
+Flyway migration V2 adds indexes for origin and destination statement queries.
+
 ### Create Customer
 
 **POST** `/customers`
