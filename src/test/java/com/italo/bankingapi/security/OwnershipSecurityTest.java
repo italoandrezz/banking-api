@@ -23,6 +23,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -83,6 +85,8 @@ class OwnershipSecurityTest {
         when(accountRepository.findByIdForUpdate(otherAccount.getId())).thenReturn(Optional.of(otherAccount));
         when(accountRepository.findCustomerIdByAccountId(ownAccount.getId())).thenReturn(Optional.of(owner.getId()));
         when(accountRepository.findCustomerIdByAccountId(otherAccount.getId())).thenReturn(Optional.of(other.getId()));
+        when(transactionRepository.findStatement(any(), any(), any(), any(), any(Pageable.class)))
+                .thenAnswer(invocation -> Page.empty(invocation.getArgument(4, Pageable.class)));
     }
 
     @Test
@@ -186,10 +190,33 @@ class OwnershipSecurityTest {
 
     @Test
     void shouldReadOwnHistory() throws Exception {
-        when(transactionRepository.findByOriginAccountIdOrDestinationAccountId(
-                ownAccount.getId(), ownAccount.getId())).thenReturn(List.of());
         mvc.perform(get("/accounts/{id}/transactions", ownAccount.getId()).header("Authorization", bearer))
-                .andExpect(status().isOk()).andExpect(content().json("[]"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content").isEmpty())
+                .andExpect(jsonPath("$.page").value(0)).andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(0)).andExpect(jsonPath("$.totalPages").value(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"page=-1", "size=0", "size=101", "page=2147483647&size=100",
+            "page=abc", "size=999999999999", "type=INVALID", "startDate=2026-02-30",
+            "endDate=invalid", "startDate=2026-10-02&endDate=2026-10-01"})
+    void shouldRejectInvalidStatementParameters(String query) throws Exception {
+        mvc.perform(get("/accounts/" + ownAccount.getId() + "/transactions?" + query).header("Authorization", bearer))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
+    void shouldPassStatementFiltersToRepository() throws Exception {
+        mvc.perform(get("/accounts/{id}/transactions", ownAccount.getId()).header("Authorization", bearer)
+                        .param("page", "1").param("size", "5").param("startDate", "2026-10-01")
+                        .param("endDate", "2026-10-02").param("type", "TRANSFER"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.page").value(1)).andExpect(jsonPath("$.size").value(5));
+        verify(transactionRepository).findStatement(eq(ownAccount.getId()),
+                eq(LocalDate.of(2026, 10, 1).atStartOfDay()), eq(LocalDate.of(2026, 10, 3).atStartOfDay()),
+                eq(com.italo.bankingapi.enums.TransactionType.TRANSFER),
+                eq(org.springframework.data.domain.PageRequest.of(1, 5,
+                        org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt", "id"))));
     }
 
     @Test

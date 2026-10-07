@@ -9,6 +9,9 @@ import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.repository.AccountRepository;
 import com.italo.bankingapi.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.mockito.Spy;
@@ -71,7 +74,7 @@ class TransactionServiceTest {
         prepareHistory(account, List.of(transaction));
 
         // Act
-        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(account.getId());
+        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(account.getId(), 0, 20, null, null, null).content();
 
         // Assert
         assertEquals(1, responses.size());
@@ -88,7 +91,7 @@ class TransactionServiceTest {
         prepareHistory(account, List.of(transaction));
 
         // Act
-        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(account.getId());
+        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(account.getId(), 0, 20, null, null, null).content();
 
         // Assert
         assertEquals(TransactionType.WITHDRAW, responses.get(0).getType());
@@ -105,7 +108,7 @@ class TransactionServiceTest {
         prepareHistory(origin, List.of(transaction));
 
         // Act
-        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(origin.getId());
+        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(origin.getId(), 0, 20, null, null, null).content();
 
         // Assert
         assertTransactionResponse(responses.get(0), transaction);
@@ -121,7 +124,7 @@ class TransactionServiceTest {
         prepareHistory(account, List.of());
 
         // Act
-        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(account.getId());
+        List<TransactionResponse> responses = transactionService.findTransactionsByAccountId(account.getId(), 0, 20, null, null, null).content();
 
         // Assert
         assertEquals(0, responses.size());
@@ -137,25 +140,25 @@ class TransactionServiceTest {
         // Act
         NotFoundException exception = assertThrows(
                 NotFoundException.class,
-                () -> transactionService.findTransactionsByAccountId(accountId)
+                () -> transactionService.findTransactionsByAccountId(accountId, 0, 20, null, null, null)
         );
 
         // Assert
         assertEquals("Account not found.", exception.getMessage());
         verify(transactionRepository, never())
-                .findByOriginAccountIdOrDestinationAccountId(accountId, accountId);
+                .findStatement(accountId, null, null, null, PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
     }
 
     private void prepareHistory(Account account, List<Transaction> transactions) {
         when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
-        when(transactionRepository.findByOriginAccountIdOrDestinationAccountId(account.getId(), account.getId()))
-                .thenReturn(transactions);
+        when(transactionRepository.findStatement(account.getId(), null, null, null, PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt", "id"))))
+                .thenReturn(new PageImpl<>(transactions));
     }
 
     private void verifyHistoryQuery(Account account) {
         verify(accountRepository, times(1)).findById(account.getId());
         verify(transactionRepository, times(1))
-                .findByOriginAccountIdOrDestinationAccountId(account.getId(), account.getId());
+                .findStatement(account.getId(), null, null, null, PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
     }
 
     private Account createAccount() {
