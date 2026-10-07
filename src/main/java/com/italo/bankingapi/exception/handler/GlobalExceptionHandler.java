@@ -3,6 +3,7 @@ package com.italo.bankingapi.exception.handler;
 import com.italo.bankingapi.dto.error.ErrorResponse;
 import com.italo.bankingapi.exception.ConflictException;
 import com.italo.bankingapi.exception.InvalidAmountException;
+import com.italo.bankingapi.exception.InvalidStatementQueryException;
 import com.italo.bankingapi.exception.InsufficientBalanceException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.exception.UnauthorizedException;
@@ -19,6 +20,14 @@ import java.time.LocalDateTime;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(InvalidStatementQueryException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidStatementQuery(
+            InvalidStatementQueryException exception, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(ErrorResponse.builder()
+                .timestamp(LocalDateTime.now()).status(400).error("Bad Request")
+                .message(exception.getMessage()).path(request.getRequestURI()).build());
+    }
 
     @ExceptionHandler(InvalidAmountException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAmount(
@@ -108,7 +117,7 @@ public class GlobalExceptionHandler {
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
                 .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
-                .message("Invalid customer ID format.")
+                .message("Invalid value for parameter '" + exception.getName() + "'.")
                 .path(request.getRequestURI())
                 .build();
 

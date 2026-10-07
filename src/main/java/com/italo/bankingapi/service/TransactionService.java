@@ -2,6 +2,14 @@ package com.italo.bankingapi.service;
 
 import com.italo.bankingapi.config.security.AuthenticatedCustomer;
 import com.italo.bankingapi.dto.transaction.TransactionResponse;
+import com.italo.bankingapi.dto.transaction.TransactionPageResponse;
+import com.italo.bankingapi.enums.TransactionType;
+import com.italo.bankingapi.exception.InvalidStatementQueryException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
+
 import com.italo.bankingapi.entity.Account;
 import com.italo.bankingapi.entity.Transaction;
 import com.italo.bankingapi.exception.NotFoundException;
@@ -10,7 +18,6 @@ import com.italo.bankingapi.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -21,15 +28,25 @@ public class TransactionService {
     private final AccountRepository accountRepository;
     private final AuthenticatedCustomer authenticatedCustomer;
 
-    public List<TransactionResponse> findTransactionsByAccountId(UUID accountId) {
+    @Transactional(readOnly = true)
+    public TransactionPageResponse findTransactionsByAccountId(UUID accountId, int page, int size,
+                                                               LocalDate startDate, LocalDate endDate,
+                                                               TransactionType type) {
+        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE) {
+            throw new InvalidStatementQueryException("Page must be nonnegative, size must be between 1 and 100, and offset must not exceed 2147483647.");
+        }
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new InvalidStatementQueryException("Start date must not be after end date.");
+        }
+        if (LocalDate.MAX.equals(endDate)) { throw new InvalidStatementQueryException("End date is out of range."); }
         Account account = findAccountOrThrow(accountId);
         authenticatedCustomer.requireOwner(account.getCustomer().getId());
-        List<Transaction> transactions = transactionRepository
-                        .findByOriginAccountIdOrDestinationAccountId(
-                                account.getId(),
-                                account.getId()
-                        );
-        return transactions.stream().map(this::toTransactionResponse).toList();
+        var transactions = transactionRepository.findStatement(account.getId(),
+                startDate == null ? null : startDate.atStartOfDay(),
+                endDate == null ? null : endDate.plusDays(1).atStartOfDay(), type,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
+        return new TransactionPageResponse(transactions.getContent().stream().map(this::toTransactionResponse).toList(),
+                page, size, transactions.getTotalElements(), transactions.getTotalPages());
     }
     private Account findAccountOrThrow(UUID id) {
         return accountRepository.findById(id).orElseThrow(() -> new NotFoundException("Account not found."));
