@@ -32,6 +32,21 @@ public class AccountController {
 
     private final AccountService accountService;
 
+    @Operation(summary = "Close own account", description = "Permanently closes an ACTIVE account with zero balance. Account and history remain available for consultation.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Account closed"),
+            @ApiResponse(responseCode = "400", description = "Invalid account UUID"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Account belongs to another customer"),
+            @ApiResponse(responseCode = "404", description = "Account not found"),
+            @ApiResponse(responseCode = "409", description = "Account is not ACTIVE or balance is not zero",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PatchMapping("/{id}/close")
+    public ResponseEntity<AccountResponse> close(@PathVariable UUID id) {
+        return ResponseEntity.ok(accountService.close(id));
+    }
+
     @Operation(summary = "Block own account", description = "Changes ACTIVE to BLOCKED. Balance and history are preserved.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Account blocked"),
