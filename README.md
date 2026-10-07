@@ -225,12 +225,36 @@ a nonzero balance; account lookup and transaction history remain available.
 Status changes update `updatedAt` and acquire the same pessimistic lock used by
 financial operations. A concurrent movement either commits before the block or
 sees the blocked state and fails. Blocking/unblocking does not create a financial
-transaction or remove previous history. Account closure is not implemented yet.
+transaction or remove previous history.
 
 ```bash
 curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/block \
   -H "Authorization: Bearer TOKEN"
 curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/unblock \
+  -H "Authorization: Bearer TOKEN"
+```
+
+### Close an account
+
+`PATCH /accounts/{id}/close` permanently changes an ACTIVE account with zero
+balance to CLOSED. Only the authenticated owner can close the account. No request
+body is required; success returns HTTP 200 with the updated account.
+
+A nonzero balance, a BLOCKED account or an already CLOSED account returns 409.
+Blocked accounts must be unblocked first. Missing authentication returns 401,
+another owner's account returns 403, and a nonexistent account returns 404.
+
+Closure updates `updatedAt`, preserves the account and its transaction history,
+and does not create a financial transaction. Owners can still consult their
+closed accounts and history, but cannot reopen them or perform financial
+operations on them, including receiving transfers.
+
+The zero-balance check and status change hold the same pessimistic lock as
+financial operations. If incoming money commits first, closure is rejected;
+if closure commits first, the incoming movement is rejected.
+
+```bash
+curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/close \
   -H "Authorization: Bearer TOKEN"
 ```
 
@@ -276,6 +300,7 @@ Deposits represent the authenticated account holder's operation, not an external
 | GET | /accounts/{id} |
 | PATCH | /accounts/{id}/block |
 | PATCH | /accounts/{id}/unblock |
+| PATCH | /accounts/{id}/close |
 | POST | /accounts/{id}/deposit |
 | POST | /accounts/{id}/withdraw |
 | POST | /accounts/transfer |
