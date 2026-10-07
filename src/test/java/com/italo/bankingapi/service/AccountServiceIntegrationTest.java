@@ -163,6 +163,52 @@ class AccountServiceIntegrationTest {
     }
 
     @Test
+    void shouldCloseZeroBalanceAccountAndPreserveHistory() {
+        accountService.withdraw(source.getId(), new WithdrawRequest(new BigDecimal("100.00")));
+        var history = jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions");
+        assertEquals(AccountStatus.CLOSED, accountService.close(source.getId()).getStatus());
+        var persisted = accountRepository.findById(source.getId()).orElseThrow();
+        assertEquals(AccountStatus.CLOSED, persisted.getStatus());
+        assertNotNull(persisted.getUpdatedAt());
+        assertBalance(source, "0.00");
+        assertThrows(ConflictException.class, () -> accountService.close(source.getId()));
+        assertThrows(ConflictException.class, () -> accountService.block(source.getId()));
+        assertThrows(ConflictException.class, () -> accountService.unblock(source.getId()));
+        assertThrows(ConflictException.class,
+                () -> accountService.deposit(source.getId(), new DepositRequest(new BigDecimal("1.00"))));
+        assertThrows(ConflictException.class,
+                () -> accountService.withdraw(source.getId(), new WithdrawRequest(new BigDecimal("1.00"))));
+        assertThrows(ConflictException.class, () -> accountService.transfer(transferRequest()));
+        assertEquals(AccountStatus.CLOSED, accountService.findAccountById(source.getId()).getStatus());
+        assertEquals(history, jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions"));
+        assertBalance(source, "0.00");
+        assertBalance(destination, "50.00");
+    }
+
+    @Test
+    void shouldRejectClosingAccountWithMoneyWithoutChangingIt() {
+        assertThrows(ConflictException.class, () -> accountService.close(source.getId()));
+        Account persisted = accountRepository.findById(source.getId()).orElseThrow();
+        assertEquals(AccountStatus.ACTIVE, persisted.getStatus());
+        assertNull(persisted.getUpdatedAt());
+        assertBalance(source, "100.00");
+        assertEquals(0, historyCount());
+    }
+
+    @Test
+    void shouldRequireUnblockingBeforeClosingZeroBalanceAccount() {
+        accountService.withdraw(source.getId(), new WithdrawRequest(new BigDecimal("100.00")));
+        accountService.block(source.getId());
+        assertThrows(ConflictException.class, () -> accountService.close(source.getId()));
+        assertEquals(AccountStatus.BLOCKED, accountRepository.findById(source.getId()).orElseThrow().getStatus());
+        accountService.unblock(source.getId());
+        accountService.close(source.getId());
+        assertEquals(AccountStatus.CLOSED, accountRepository.findById(source.getId()).orElseThrow().getStatus());
+        assertBalance(source, "0.00");
+        assertEquals(1, historyCount());
+    }
+
+    @Test
     void shouldBlockAndUnblockWithoutChangingBalanceOrHistory() {
         accountService.deposit(source.getId(), new DepositRequest(new BigDecimal("1.00")));
         var history = jdbcTemplate.queryForList("SELECT * FROM banking_api_tests.transactions");

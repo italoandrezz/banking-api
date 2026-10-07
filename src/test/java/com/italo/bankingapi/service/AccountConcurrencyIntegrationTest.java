@@ -172,6 +172,76 @@ class AccountConcurrencyIntegrationTest {
         return accountService.transfer(new TransferRequest(source.getId(), destination.getId(), new BigDecimal(amount)));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"deposit", "incoming-transfer"})
+    void shouldSerializeClosureWithIncomingMoney(String operation) throws Exception {
+        jdbc.update("UPDATE banking_api_tests.accounts SET balance = 0 WHERE id = ?", a.getId());
+        List<Boolean> results = concurrently(owner, () -> tryClose(),
+                operation.equals("deposit") ? owner : recipient, () -> {
+                    try {
+                        if (operation.equals("deposit")) {
+                            accountService.deposit(a.getId(), new DepositRequest(new BigDecimal("10.00")));
+                        } else {
+                            transfer(b, a, "10.00");
+                        }
+                        return true;
+                    } catch (ConflictException expected) {
+                        return false;
+                    }
+                });
+        assertEquals(1, results.stream().filter(Boolean::booleanValue).count());
+        String status = jdbc.queryForObject("SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, a.getId());
+        if (results.get(0)) {
+            assertEquals("CLOSED", status);
+            assertBalances("0.00", "50.00");
+            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM banking_api_tests.transactions", Integer.class));
+        } else {
+            assertEquals("ACTIVE", status);
+            assertBalances("10.00", operation.equals("deposit") ? "50.00" : "40.00");
+            assertHistory(operation.equals("deposit") ? "DEPOSIT" : "TRANSFER", List.of(new BigDecimal("10.00")));
+            if (operation.equals("incoming-transfer")) assertTransfer(b, a, "10.00");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"withdraw", "transfer"})
+    void shouldSerializeClosureWithDrainingBalance(String operation) throws Exception {
+        List<Boolean> results = concurrently(owner, () -> tryClose(), owner, () -> {
+            if (operation.equals("withdraw")) {
+                accountService.withdraw(a.getId(), new WithdrawRequest(new BigDecimal("100.00")));
+            } else {
+                transfer(a, b, "100.00");
+            }
+            return true;
+        });
+        assertTrue(results.get(1));
+        assertEquals(results.get(0) ? "CLOSED" : "ACTIVE", jdbc.queryForObject(
+                "SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, a.getId()));
+        assertBalances("0.00", operation.equals("withdraw") ? "50.00" : "150.00");
+        assertHistory(operation.equals("withdraw") ? "WITHDRAW" : "TRANSFER", List.of(new BigDecimal("100.00")));
+        if (operation.equals("transfer")) assertTransfer(a, b, "100.00");
+    }
+
+    @Test
+    void shouldAllowOnlyOneConcurrentClosure() throws Exception {
+        jdbc.update("UPDATE banking_api_tests.accounts SET balance = 0 WHERE id = ?", a.getId());
+        List<Boolean> results = concurrently(owner, () -> tryClose(), owner, () -> tryClose());
+        assertEquals(1, results.stream().filter(Boolean::booleanValue).count());
+        assertEquals("CLOSED", jdbc.queryForObject(
+                "SELECT status::text FROM banking_api_tests.accounts WHERE id = ?", String.class, a.getId()));
+        assertBalances("0.00", "50.00");
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM banking_api_tests.transactions", Integer.class));
+    }
+
+    private boolean tryClose() {
+        try {
+            accountService.close(a.getId());
+            return true;
+        } catch (ConflictException expected) {
+            return false;
+        }
+    }
+
     private <T> List<T> concurrently(Customer firstOwner, Callable<T> first,
                                     Customer secondOwner, Callable<T> second) throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
