@@ -33,6 +33,7 @@ public class CustomerService {
             throw new ConflictException("E-mail already registered.");
         }
         Customer customer = Customer.builder()
+                .role(com.italo.bankingapi.enums.CustomerRole.CUSTOMER)
                 .fullName(request.getFullName())
                 .cpf(request.getCpf())
                 .email(request.getEmail())
