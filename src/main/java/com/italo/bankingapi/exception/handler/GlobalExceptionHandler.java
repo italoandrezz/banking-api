@@ -6,6 +6,7 @@ import com.italo.bankingapi.exception.InvalidAmountException;
 import com.italo.bankingapi.exception.InvalidStatementQueryException;
 import com.italo.bankingapi.exception.InvalidIdempotencyKeyException;
 import com.italo.bankingapi.exception.BusinessException;
+import com.italo.bankingapi.exception.InvalidReversalException;
 import com.italo.bankingapi.exception.InsufficientBalanceException;
 import com.italo.bankingapi.exception.NotFoundException;
 import com.italo.bankingapi.exception.UnauthorizedException;
@@ -23,7 +24,7 @@ import java.time.LocalDateTime;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler({InvalidStatementQueryException.class, InvalidIdempotencyKeyException.class})
+    @ExceptionHandler({InvalidStatementQueryException.class, InvalidIdempotencyKeyException.class, InvalidReversalException.class})
     public ResponseEntity<ErrorResponse> handleInvalidStatementQuery(
             BusinessException exception, HttpServletRequest request) {
         return ResponseEntity.badRequest().body(ErrorResponse.builder()
