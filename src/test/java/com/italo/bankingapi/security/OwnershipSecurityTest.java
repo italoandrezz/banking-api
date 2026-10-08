@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest({CustomerController.class, AccountController.class, TransactionController.class, AuthController.class})
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtAuthenticationEntryPoint.class,
-        AuthenticatedCustomer.class, JwtService.class, AuthService.class, CustomerService.class,
+        com.italo.bankingapi.config.security.JsonAccessDeniedHandler.class, AuthenticatedCustomer.class, JwtService.class, AuthService.class, CustomerService.class,
         AccountService.class, TransactionService.class, IdempotentFinancialService.class})
 @TestPropertySource(properties = {
         "jwt.secret=01234567890123456789012345678901", "jwt.expiration=86400000"
