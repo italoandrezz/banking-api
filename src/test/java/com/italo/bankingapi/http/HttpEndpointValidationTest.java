@@ -268,17 +268,97 @@ class HttpEndpointValidationTest {
         balance(account, owner, "90.00"); balance(recipient, other, "10.00");
     }
 
+    @Test @Order(10)
+    void adminReversesAllFinancialTypesAndStatementsExposeLinks() throws Exception {
+        User admin = register("33333333333", "admin@http.test");
+        jdbc.update("UPDATE customers SET role = 'ADMIN' WHERE id = ?::uuid", admin.id);
+        call("POST", "/accounts/" + account + "/deposit", owner.token, money("100"), 200);
+        for (String operation : List.of("deposit", "withdraw", "transfer")) {
+            if (operation.equals("transfer")) call("POST", "/accounts/transfer", owner.token, transfer("10"), 200);
+            else call("POST", "/accounts/" + account + "/" + operation, owner.token, money("10"), 200);
+            String originalId = jdbc.queryForObject("SELECT id::text FROM transactions WHERE original_transaction_id IS NULL ORDER BY created_at DESC, id DESC LIMIT 1", String.class);
+            String route = "/admin/transactions/" + originalId + "/reversal";
+            Map<String, String> request = Map.of("reason", "Approved HTTP correction");
+            call("POST", route, null, request, 401);
+            call("POST", route, owner.token, request, 403);
+            JsonNode inverse = call("POST", route, admin.token, request, 201);
+            assertEquals(originalId, inverse.path("originalTransactionId").asText());
+            assertEquals(admin.id, inverse.path("adminId").asText());
+            assertEquals("Approved HTTP correction", inverse.path("reason").asText());
+            assertEquals(0, new BigDecimal("10").compareTo(inverse.path("amount").decimalValue()));
+            assertEquals(operation.equals("deposit") ? "WITHDRAW" : operation.equals("withdraw") ? "DEPOSIT" : "TRANSFER", inverse.path("type").asText());
+            String reversalId = inverse.path("id").asText();
+            assertEquals(admin.id, jdbc.queryForObject("SELECT reversal_admin_id::text FROM transactions WHERE id = ?::uuid", String.class, reversalId));
+            call("POST", route, admin.token, request, 409);
+            call("POST", "/admin/transactions/" + reversalId + "/reversal", admin.token, request, 409);
+            balance(account, owner, "100.00"); balance(recipient, other, "0.00");
+            JsonNode history = call("GET", "/accounts/" + account + "/transactions", owner.token, null, 200).path("content");
+            boolean foundOriginal = false;
+            boolean foundInverse = false;
+            for (JsonNode entry : history) {
+                if (entry.path("id").asText().equals(originalId)) {
+                    assertEquals(reversalId, entry.path("reversalTransactionId").asText()); foundOriginal = true;
+                }
+                if (entry.path("id").asText().equals(reversalId)) {
+                    assertEquals(originalId, entry.path("originalTransactionId").asText()); foundInverse = true;
+                    assertFalse(entry.has("adminId")); assertFalse(entry.has("reversalReason"));
+                }
+            }
+            assertTrue(foundOriginal && foundInverse);
+        }
+    }
+
+    @Test @Order(11)
+    void reversalValidatesReasonAccountStateBalanceAndAdminRevocation() throws Exception {
+        User admin = register("33333333333", "admin@http.test");
+        jdbc.update("UPDATE customers SET role = 'ADMIN' WHERE id = ?::uuid", admin.id);
+        call("POST", "/accounts/" + account + "/deposit", owner.token, money("10"), 200);
+        String originalId = jdbc.queryForObject("SELECT id::text FROM transactions", String.class);
+        String route = "/admin/transactions/" + originalId + "/reversal";
+        call("POST", route, admin.token, Map.of(), 400);
+        for (String reason : List.of("", "  ", "a".repeat(256)))
+            call("POST", route, admin.token, Map.of("reason", reason), 400);
+        Map<String, String> request = Map.of("reason", "Correction");
+        call("POST", "/admin/transactions/invalid/reversal", admin.token, request, 400);
+        call("POST", "/admin/transactions/" + UUID.randomUUID() + "/reversal", admin.token, request, 404);
+        call("PATCH", "/accounts/" + account + "/block", owner.token, null, 200);
+        call("POST", route, admin.token, request, 409);
+        call("PATCH", "/accounts/" + account + "/unblock", owner.token, null, 200);
+        call("POST", "/accounts/" + account + "/withdraw", owner.token, money("10"), 200);
+        call("POST", route, admin.token, request, 409);
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM transactions WHERE original_transaction_id IS NOT NULL", Integer.class));
+        call("POST", "/accounts/" + account + "/deposit", owner.token, money("10"), 200);
+        jdbc.update("UPDATE customers SET role = 'CUSTOMER' WHERE id = ?::uuid", admin.id);
+        call("POST", route, admin.token, request, 403);
+        jdbc.update("UPDATE customers SET role = 'ADMIN' WHERE id = ?::uuid", admin.id);
+        call("POST", route, admin.token, request, 201);
+        balance(account, owner, "0.00");
+    }
+
+    @Test @Order(12)
+    void replayingOriginalIdempotencyKeyDoesNotUndoReversal() throws Exception {
+        User admin = register("33333333333", "admin@http.test");
+        jdbc.update("UPDATE customers SET role = 'ADMIN' WHERE id = ?::uuid", admin.id);
+        String deposit = "/accounts/" + account + "/deposit";
+        JsonNode originalResponse = call("POST", deposit, owner.token, money("10"), 200, "original-key");
+        String id = jdbc.queryForObject("SELECT id::text FROM transactions", String.class);
+        call("POST", "/admin/transactions/" + id + "/reversal", admin.token, Map.of("reason", "Correction"), 201);
+        assertEquals(originalResponse, call("POST", deposit, owner.token, money("10"), 200, "original-key"));
+        balance(account, owner, "0.00");
+        assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM transactions", Integer.class));
+    }
+
     @Test @Order(99)
     void everyDocumentedBusinessEndpointWasExercised() throws Exception {
         JsonNode paths = call("GET", "/v3/api-docs", null, null, 200).path("paths");
         Set<String> documented = new TreeSet<>();
         paths.fields().forEachRemaining(path -> {
-            if (path.getKey().startsWith("/accounts") || path.getKey().startsWith("/customers") || path.getKey().startsWith("/auth"))
+            if (path.getKey().startsWith("/accounts") || path.getKey().startsWith("/customers") || path.getKey().startsWith("/auth") || path.getKey().startsWith("/admin"))
                 path.getValue().fieldNames().forEachRemaining(method -> {
                     if (Set.of("get", "post", "put", "patch", "delete").contains(method)) documented.add(method.toUpperCase() + " " + path.getKey());
                 });
         });
-        assertEquals(17, documented.size());
+        assertEquals(18, documented.size());
         assertTrue(visited.containsAll(documented), () -> "Uncovered endpoints: " + documented.stream().filter(p -> !visited.contains(p)).toList());
     }
 

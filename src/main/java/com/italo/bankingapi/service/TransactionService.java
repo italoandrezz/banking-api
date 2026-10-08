@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,13 +47,16 @@ public class TransactionService {
                 startDate == null ? null : startDate.atStartOfDay(),
                 endDate == null ? null : endDate.plusDays(1).atStartOfDay(), type,
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
-        return new TransactionPageResponse(transactions.getContent().stream().map(this::toTransactionResponse).toList(),
+        var ids = transactions.getContent().stream().map(Transaction::getId).toList();
+        Map<UUID, UUID> reversalIds = ids.isEmpty() ? Map.of() : transactionRepository.findReversalLinks(ids).stream()
+                .collect(Collectors.toMap(TransactionRepository.ReversalLink::getOriginalTransactionId, TransactionRepository.ReversalLink::getId));
+        return new TransactionPageResponse(transactions.getContent().stream().map(t -> toTransactionResponse(t, reversalIds.get(t.getId()))).toList(),
                 page, size, transactions.getTotalElements(), transactions.getTotalPages());
     }
     private Account findAccountOrThrow(UUID id) {
         return accountRepository.findById(id).orElseThrow(() -> new NotFoundException("Account not found."));
     }
-    private TransactionResponse toTransactionResponse(Transaction transaction) {
+    private TransactionResponse toTransactionResponse(Transaction transaction, UUID reversalId) {
         return TransactionResponse.builder()
                 .id(transaction.getId())
                 .originAccountId(transaction.getOriginAccount().getId())
@@ -64,6 +69,8 @@ public class TransactionService {
                 .amount(transaction.getAmount())
                 .description(transaction.getDescription())
                 .createdAt(transaction.getCreatedAt())
+                .originalTransactionId(transaction.getOriginalTransactionId())
+                .reversalTransactionId(reversalId)
                 .build();
     }
 }

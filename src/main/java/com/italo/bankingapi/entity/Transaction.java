@@ -44,4 +44,13 @@ public class Transaction {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "original_transaction_id", unique = true)
+    private UUID originalTransactionId;
+
+    @Column(name = "reversal_admin_id")
+    private UUID reversalAdminId;
+
+    @Column(name = "reversal_reason", length = 255)
+    private String reversalReason;
 }
