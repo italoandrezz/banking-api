@@ -389,6 +389,40 @@ Content-Type: application/json
   Records have no foreign keys to mutable customer/account records so retention
   is independent; deleting replay records would allow their keys to execute again.
 
+### Customer and administrator authorization
+
+Flyway V4 adds the `CUSTOMER` and `ADMIN` roles. Existing customers and public
+registrations receive `CUSTOMER`. Registration and profile updates cannot assign
+roles, even when a client sends a `role` field.
+
+`GET /auth/me` requires a bearer token and returns the authenticated identity:
+
+```json
+{"customerId": "UUID", "role": "CUSTOMER"}
+```
+
+The JWT identifies the customer; authorities are loaded from the database on each
+request. Promotion or revocation takes effect on the next request with the same
+token. Role claims in a token do not grant privileges.
+
+`/admin` and `/admin/**` require `ADMIN`. Missing authentication returns `401`;
+an authenticated customer without the role receives the standard JSON `403` error.
+Method security is enabled for administrative services with
+`@PreAuthorize("hasRole('ADMIN')")`. Account/customer ownership checks still apply
+to administrators on existing endpoints.
+
+There are no administrative business endpoints or reversal operations in this
+delivery. The namespace and service authorization support the next reversal PR.
+No default administrator, public promotion endpoint or seeded password is created.
+An authorized database operator can provision an existing identity explicitly:
+
+```sql
+-- Replace the placeholder with the verified customer's UUID. Expect one row.
+UPDATE customers SET role = 'ADMIN' WHERE id = 'CUSTOMER_UUID' AND role = 'CUSTOMER';
+-- Revoke administrative access:
+UPDATE customers SET role = 'CUSTOMER' WHERE id = 'CUSTOMER_UUID' AND role = 'ADMIN';
+```
+
 ### Create Customer
 
 **POST** `/customers`
