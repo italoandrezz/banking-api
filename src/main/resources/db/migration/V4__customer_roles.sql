@@ -1,0 +1,2 @@
+ALTER TABLE customers ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER';
+ALTER TABLE customers ADD CONSTRAINT customers_role_check CHECK (role IN ('CUSTOMER', 'ADMIN'));
