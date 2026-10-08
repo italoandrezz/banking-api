@@ -48,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest({CustomerController.class, AccountController.class, TransactionController.class, AuthController.class})
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtAuthenticationEntryPoint.class,
         AuthenticatedCustomer.class, JwtService.class, AuthService.class, CustomerService.class,
-        AccountService.class, TransactionService.class})
+        AccountService.class, TransactionService.class, IdempotentFinancialService.class})
 @TestPropertySource(properties = {
         "jwt.secret=01234567890123456789012345678901", "jwt.expiration=86400000"
 })
@@ -63,6 +63,7 @@ class OwnershipSecurityTest {
     @MockitoBean private CustomerRepository customerRepository;
     @MockitoBean private AccountRepository accountRepository;
     @MockitoBean private TransactionRepository transactionRepository;
+    @MockitoBean private IdempotencyRepository idempotencyRepository;
 
     private Customer owner;
     private Customer other;
@@ -95,6 +96,34 @@ class OwnershipSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(owner.getId().toString()))
                 .andExpect(jsonPath("$.password").doesNotExist());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "bad key", "bad/key", "á"})
+    void shouldRejectInvalidIdempotencyKey(String key) throws Exception {
+        mvc.perform(post("/accounts/{id}/deposit", ownAccount.getId())
+                .header("Authorization", bearer).header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":10}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
+        verifyNoInteractions(idempotencyRepository, transactionRepository);
+    }
+
+    @Test
+    void shouldRejectTooLongIdempotencyKey() throws Exception {
+        mvc.perform(post("/accounts/{id}/deposit", ownAccount.getId())
+                .header("Authorization", bearer).header("Idempotency-Key", "a".repeat(129))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":10}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(idempotencyRepository, transactionRepository);
+    }
+
+    @Test
+    void shouldCheckOwnershipBeforeLookingUpIdempotencyKey() throws Exception {
+        mvc.perform(post("/accounts/{id}/deposit", otherAccount.getId())
+                .header("Authorization", bearer).header("Idempotency-Key", "existing-key")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":10}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(idempotencyRepository, transactionRepository);
     }
 
     @Test

@@ -313,6 +313,8 @@ Deposits represent the authenticated account holder's operation, not an external
 
 ### Paginated account statement
 
+See also the financial retry contract below before retrying deposits, withdrawals or transfers.
+
 `GET /accounts/{id}/transactions?page=0&size=20&startDate=2026-10-01&endDate=2026-10-31&type=TRANSFER`
 
 Requires the account owner's bearer token. Includes outgoing and received transfers;
@@ -349,6 +351,43 @@ equal timestamps. Totals reflect the account and selected filters. Pages beyond
 the last page return empty `content` with the matching totals. Separate page
 requests do not share a snapshot: newly inserted transactions can shift offsets.
 Flyway migration V2 adds indexes for origin and destination statement queries.
+
+### Financial operation retries
+
+The deposit, withdrawal and transfer endpoints accept an optional `Idempotency-Key`
+header. Generate a new key (for example, a UUID) for each intended operation and
+reuse it for retries of that same operation:
+
+```http
+POST /accounts/ACCOUNT_UUID/deposit
+Authorization: Bearer YOUR_TOKEN
+Idempotency-Key: 4e28d1c9-2017-4148-9031-cabf326b5f21
+Content-Type: application/json
+
+{"amount": 25.00}
+```
+
+- Without the header, every successful request executes independently, preserving
+  the previous behavior.
+- Keys are case-sensitive, scoped to the authenticated customer across all three
+  endpoints, and contain 1–128 ASCII letters, digits, `.`, `_`, `:` or `-`.
+  Invalid keys return `400`.
+- A successful retry returns `200` with the original `AccountResponse` snapshot,
+  even if subsequent operations changed the balance or account status. Read the
+  account endpoint to obtain its current state.
+- The operation, source account, destination account and amount must match.
+  Amounts such as `25`, `25.0` and `25.00` are equivalent. Reusing a key with
+  different data returns `409` without moving money again.
+- Authentication and source account ownership are checked before replay. A key
+  never grants access to another customer's response.
+- Concurrent requests for the same customer/key wait for the initial database
+  transaction. After success they replay its result; after rollback one may retry
+  the operation. Failed operations are not cached.
+- Migration V3 stores the response and request identity in PostgreSQL. The key,
+  balances and transaction history commit or roll back together. Records survive
+  application restarts; there is currently no expiration or automatic cleanup.
+  Records have no foreign keys to mutable customer/account records so retention
+  is independent; deleting replay records would allow their keys to execute again.
 
 ### Create Customer
 
