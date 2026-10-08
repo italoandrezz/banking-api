@@ -3,6 +3,8 @@ package com.italo.bankingapi.controller;
 import com.italo.bankingapi.dto.account.*;
 import com.italo.bankingapi.dto.error.ErrorResponse;
 import com.italo.bankingapi.service.AccountService;
+import com.italo.bankingapi.service.IdempotentFinancialService;
+import com.italo.bankingapi.enums.TransactionType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -31,6 +33,7 @@ import java.util.UUID;
 public class AccountController {
 
     private final AccountService accountService;
+    private final IdempotentFinancialService financialService;
 
     @Operation(summary = "Close own account", description = "Permanently closes an ACTIVE account with zero balance. Account and history remain available for consultation.")
     @ApiResponses({
@@ -167,7 +170,7 @@ public class AccountController {
                     responseCode = "200",
                     description = "Deposit completed successfully"
             ),
-            @ApiResponse(responseCode = "409", description = "Account is not ACTIVE or resulting balance exceeds the limit",
+            @ApiResponse(responseCode = "409", description = "Account is not ACTIVE, balance exceeds the limit, or idempotency key conflicts",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(
                     responseCode = "400",
@@ -188,8 +191,10 @@ public class AccountController {
     public ResponseEntity<AccountResponse> deposit(
             @Parameter(description = "Account UUID")
             @PathVariable UUID id,
+            @Parameter(description = "Optional retry key: 1-128 ASCII letters, digits, . _ : or -. Scoped to the customer across financial operations. Identical retries return the original response; different data returns 409.")
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @Valid @RequestBody DepositRequest request) {
-        AccountResponse response = accountService.deposit(id, request);
+        AccountResponse response = financialService.execute(key, TransactionType.DEPOSIT, id, null, request.getAmount());
         return ResponseEntity.ok(response);
     }
     @Operation(
@@ -221,7 +226,7 @@ public class AccountController {
             ),
             @ApiResponse(
                     responseCode = "409",
-                    description = "Insufficient balance or account is not ACTIVE",
+                    description = "Insufficient balance, account is not ACTIVE, or idempotency key conflicts",
                     content = @Content(
                             schema = @Schema(implementation = ErrorResponse.class)
                     )
@@ -231,8 +236,10 @@ public class AccountController {
     public ResponseEntity<AccountResponse> withdraw(
             @Parameter(description = "Account UUID")
             @PathVariable UUID id,
+            @Parameter(description = "Optional retry key: 1-128 ASCII letters, digits, . _ : or -. Scoped to the customer across financial operations. Identical retries return the original response; different data returns 409.")
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @Valid @RequestBody WithdrawRequest request) {
-        AccountResponse response = accountService.withdraw(id, request);
+        AccountResponse response = financialService.execute(key, TransactionType.WITHDRAW, id, null, request.getAmount());
         return ResponseEntity.ok(response);
     }
     @Operation(
@@ -264,15 +271,18 @@ public class AccountController {
             ),
             @ApiResponse(
                     responseCode = "409",
-                    description = "Insufficient balance or invalid transfer operation",
+                    description = "Insufficient balance, invalid transfer operation, or idempotency key conflicts",
                     content = @Content(
                             schema = @Schema(implementation = ErrorResponse.class)
                     )
             )
     })
     @PostMapping("/transfer")
-    public ResponseEntity<AccountResponse> transfer(@Valid @RequestBody TransferRequest request) {
-        AccountResponse response = accountService.transfer(request);
+    public ResponseEntity<AccountResponse> transfer(
+            @Parameter(description = "Optional retry key: 1-128 ASCII letters, digits, . _ : or -. Scoped to the customer across financial operations. Identical retries return the original response; different data returns 409.")
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
+            @Valid @RequestBody TransferRequest request) {
+        AccountResponse response = financialService.execute(key, TransactionType.TRANSFER, request.getSourceAccountId(), request.getDestinationAccountId(), request.getAmount());
         return ResponseEntity.ok(response);
     }
 }
