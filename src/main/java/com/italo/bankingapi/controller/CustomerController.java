@@ -181,6 +181,8 @@ public class CustomerController {
     })
     @SecurityRequirement(name = "bearerAuth")
     @DeleteMapping("/{id}")
+    @ApiResponse(responseCode = "409", description = "Customer has related records and cannot be deleted",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<Void> deleteCustomer(
             @Parameter(description = "Customer UUID")
             @PathVariable UUID id) {

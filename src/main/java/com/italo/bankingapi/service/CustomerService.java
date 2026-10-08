@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -68,7 +69,12 @@ public class CustomerService {
     }
     public void deleteCustomer(UUID id) {
         Customer customer = findCustomerOrThrow(id);
-        customerRepository.delete(customer);
+        try {
+            customerRepository.delete(customer);
+        } catch (DataIntegrityViolationException exception) {
+            // The database also protects concurrent creation of dependent records.
+            throw new ConflictException("Customer has related records and cannot be deleted.");
+        }
     }
     private Customer findCustomerOrThrow(UUID id) {
         Customer customer = customerRepository.findById(id)
