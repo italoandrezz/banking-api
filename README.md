@@ -415,9 +415,8 @@ Method security is enabled for administrative services with
 `@PreAuthorize("hasRole('ADMIN')")`. Account/customer ownership checks still apply
 to administrators on existing endpoints.
 
-There are no administrative business endpoints or reversal operations in this
-delivery. The namespace and service authorization support the next reversal PR.
-No default administrator, public promotion endpoint or seeded password is created.
+Administrative transaction reversal is available as described below. No default
+administrator, public promotion endpoint or seeded password is created.
 An authorized database operator can provision an existing identity explicitly:
 
 ```sql
@@ -426,6 +425,62 @@ UPDATE customers SET role = 'ADMIN' WHERE id = 'CUSTOMER_UUID' AND role = 'CUSTO
 -- Revoke administrative access:
 UPDATE customers SET role = 'CUSTOMER' WHERE id = 'CUSTOMER_UUID' AND role = 'ADMIN';
 ```
+
+### Administrative transaction reversal
+
+`POST /admin/transactions/{id}/reversal` requires an `ADMIN` bearer token and a
+reason of 1–255 characters (not blank). The administrator may reverse a transaction
+between other customers' accounts; their ordinary account endpoints still enforce
+ownership. The request never accepts a partial amount.
+
+```http
+POST /admin/transactions/TRANSACTION_UUID/reversal
+Authorization: Bearer ADMIN_TOKEN
+Content-Type: application/json
+
+{"reason": "Duplicate payment confirmed by support"}
+```
+
+A successful request returns `201` with the reversal's `id`, `originalTransactionId`,
+`type`, `originAccountId`, `destinationAccountId`, `amount`, `adminId`, `reason` and
+`createdAt`. The reason is stored with surrounding whitespace removed. The original
+transaction is preserved, and a new full-amount financial entry is created:
+
+| Original | Reversal |
+|---|---|
+| `DEPOSIT` | `WITHDRAW` from the same account |
+| `WITHDRAW` | `DEPOSIT` into the same account |
+| `TRANSFER` A → B | `TRANSFER` B → A |
+
+All involved accounts must be `ACTIVE`. The debited account must have enough funds,
+and credit must not exceed `9999999999999.99`. Blocked/closed accounts, insufficient
+funds, overflow, a previously reversed transaction or an attempt to reverse a
+reversal return `409`. Invalid UUID/reason returns `400`, no authentication `401`,
+a non-admin `403`, and a missing original transaction `404`.
+
+The original transaction UUID is the deduplication identity: only one reversal
+can be committed for it, independent of the administrator or reason. The endpoint
+does not use `Idempotency-Key`; retries after success return `409`. If the original
+response is lost, the account owner's statement exposes the reversal link. A failed
+attempt rolls back and can be retried after correcting its cause.
+
+Migration V5 adds the original link, administrator UUID, reason, foreign keys and
+a unique constraint on the original transaction. The original row is locked before
+account locks, which follow the same UUID ordering used by ordinary transfers.
+Balances, the inverse entry and audit data share one database transaction. Audit
+foreign keys also prevent deleting a referenced administrator or original record.
+
+Statements add two nullable fields: `originalTransactionId` on the reversal, and
+`reversalTransactionId` on the original. Reversal types follow the table above, so
+existing type filters still apply. The administrator UUID and internal reason are
+not added to the public statement. Original idempotency records remain intact:
+replaying a reversed operation's original key returns its original snapshot without
+moving money again. Read the account and statement endpoints for current state.
+
+Validation includes PostgreSQL tests for all three operations, duplicate and
+simultaneous reversals, competing withdrawals, blocked/closed accounts, insufficient
+funds, overflow, authorization and rollback at commit. The real HTTP suite also
+exercises this endpoint and checks both statement links.
 
 ### Create Customer
 

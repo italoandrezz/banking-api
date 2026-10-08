@@ -5,8 +5,8 @@ application with embedded Tomcat bound to loopback on a random TCP port. Java's
 `HttpClient` sends real HTTP requests. Controllers, JWT security, services,
 repositories and PostgreSQL are real; no MockMvc or mocked dependencies are used.
 
-Validated on 2026-10-08: **212 HTTP requests**, **17 business endpoints**, **10 HTTP
-test scenarios**, all passing. The full Maven suite finished with **207 tests,
+Validated on 2026-10-08: **284 HTTP requests**, **18 business endpoints**, **13 HTTP
+test scenarios**, all passing. The full Maven suite finished with **229 tests,
 zero failures, zero errors and zero skipped tests**. The request count includes
 fixture creation/login and expected error responses, including one induced 500.
 
@@ -51,11 +51,12 @@ concurrency assertions. A passing status table alone is not the complete test re
 | `POST /accounts/{id}/withdraw` | Debit, insufficient funds, invalid amount, missing account, idempotent retry and retry after failure, ownership, authentication |
 | `POST /accounts/transfer` | Transfer, insufficient funds, same-account rejection, missing destination, concurrent retries, key conflict, commit rollback, ownership, authentication |
 | `GET /accounts/{id}/transactions` | Pagination, totals, received transfer, combined date/type filters, invalid filters, closed account history, ownership, authentication |
+| `POST /admin/transactions/{id}/reversal` | All three financial types, audit data, statement links, duplicate/reversal-of-reversal rejection, authentication, ADMIN role/revocation, invalid reason/UUID, missing original, inactive account, insufficient funds, original idempotency replay after reversal |
 
 The suite compares the endpoints exercised against `/v3/api-docs` and asserts that
-all 17 documented business routes were reached. It also checks `/admin/**` access
+all 18 documented business routes were reached. It also checks `/admin/**` access
 boundaries using a nonexistent route: CUSTOMER gets 403, ADMIN reaches routing and
-gets 404. There is no administrative business endpoint in this version.
+gets 404. The reversal endpoint is tested separately as an actual administrative operation.
 
 ## Problems reproduced and corrected
 
