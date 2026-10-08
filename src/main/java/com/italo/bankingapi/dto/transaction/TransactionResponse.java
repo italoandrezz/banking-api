@@ -23,4 +23,6 @@ public class TransactionResponse {
     private BigDecimal amount;
     private String description;
     private LocalDateTime createdAt;
+    private UUID originalTransactionId;
+    private UUID reversalTransactionId;
 }
