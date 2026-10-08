@@ -391,6 +391,10 @@ Content-Type: application/json
 
 ### Customer and administrator authorization
 
+For real HTTP validation of all business endpoints, see
+[HTTP validation](docs/http-validation.md), including execution instructions,
+coverage and known limits.
+
 Flyway V4 adds the `CUSTOMER` and `ADMIN` roles. Existing customers and public
 registrations receive `CUSTOMER`. Registration and profile updates cannot assign
 roles, even when a client sends a `role` field.
