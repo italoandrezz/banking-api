@@ -13,8 +13,41 @@ import java.util.ArrayList;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
+import java.math.BigDecimal;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface TransactionRepository extends JpaRepository<Transaction, UUID>, JpaSpecificationExecutor<Transaction> {
+    // Lock only the original row. Loading its Account entities here would cache
+    // stale balances before the account locks are acquired.
+    @Query(value = """
+            SELECT id AS "id", account_id AS "originAccountId",
+                   destination_account_id AS "destinationAccountId", type::text AS "type",
+                   amount AS "amount", original_transaction_id AS "originalTransactionId"
+            FROM transactions WHERE id = :id FOR UPDATE
+            """, nativeQuery = true)
+    Optional<OriginalTransaction> findOriginalForUpdate(@Param("id") UUID id);
+
+    boolean existsByOriginalTransactionId(UUID originalTransactionId);
+
+    @Query("select t.id as id, t.originalTransactionId as originalTransactionId from Transaction t where t.originalTransactionId in :ids")
+    List<ReversalLink> findReversalLinks(@Param("ids") List<UUID> ids);
+
+    interface ReversalLink {
+        UUID getId();
+        UUID getOriginalTransactionId();
+    }
+
+    interface OriginalTransaction {
+        UUID getId();
+        UUID getOriginAccountId();
+        UUID getDestinationAccountId();
+        String getType();
+        BigDecimal getAmount();
+        UUID getOriginalTransactionId();
+    }
+
     default Page<Transaction> findStatement(UUID accountId, LocalDateTime start, LocalDateTime end,
                                             TransactionType type, Pageable pageable) {
         return findAll((root, query, cb) -> {
