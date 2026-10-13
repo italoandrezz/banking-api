@@ -185,6 +185,11 @@ does not require `JWT_SECRET`.
 On Windows, use `.\mvnw.cmd`. GitHub Actions provisions a separate PostgreSQL
 test database and uses the same configuration.
 
+The workflow also has an independent Docker Compose job that builds the image,
+waits for API/database healthchecks and runs the HTTP smoke test. Failed runs
+upload diagnostic logs; containers and volumes are cleaned up at the end.
+See [CI configuration](docs/ci.md) for triggers, limits and required-check setup.
+
 ### Financial atomicity
 
 Deposits, withdrawals and transfers execute balance changes and transaction
