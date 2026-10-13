@@ -1,4 +1,5 @@
 package com.italo.bankingapi.service;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.italo.bankingapi.dto.customer.CreateCustomerRequest;
 import com.italo.bankingapi.dto.customer.CustomerResponse;
@@ -252,7 +253,7 @@ class CustomerServiceTest {
                 "Updated Name", customer.getEmail(), "81988888888", LocalDate.of(1999, 2, 2)
         );
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
-        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(customerRepository.updateProfile(any(), any(), any(), any(), any(), any())).thenReturn(1);
 
         // Act
         CustomerResponse response = customerService.updateCustomer(customer.getId(), request);
@@ -263,7 +264,7 @@ class CustomerServiceTest {
         assertEquals(request.getPhone(), response.getPhone());
         assertEquals(request.getBirthDate(), response.getBirthDate());
         verify(customerRepository, never()).existsByEmail(any());
-        verify(customerRepository, times(1)).save(customer);
+        verify(customerRepository).updateProfile(eq(customer.getId()), eq(request.getFullName()), eq(request.getEmail()), eq(request.getPhone()), eq(request.getBirthDate()), any());
     }
 
     @Test
@@ -275,7 +276,7 @@ class CustomerServiceTest {
         );
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
         when(customerRepository.existsByEmail(request.getEmail())).thenReturn(false);
-        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(customerRepository.updateProfile(any(), any(), any(), any(), any(), any())).thenReturn(1);
 
         // Act
         CustomerResponse response = customerService.updateCustomer(customer.getId(), request);
@@ -283,7 +284,7 @@ class CustomerServiceTest {
         // Assert
         assertEquals(request.getEmail(), response.getEmail());
         verify(customerRepository, times(1)).existsByEmail(request.getEmail());
-        verify(customerRepository, times(1)).save(customer);
+        verify(customerRepository).updateProfile(eq(customer.getId()), eq(request.getFullName()), eq(request.getEmail()), eq(request.getPhone()), eq(request.getBirthDate()), any());
     }
 
     @Test

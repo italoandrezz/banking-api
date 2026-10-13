@@ -60,12 +60,17 @@ public class CustomerService {
         if (emailChanged && customerRepository.existsByEmail(request.getEmail())) {
             throw new ConflictException("E-mail already registered.");
         }
+        int updated = customerRepository.updateProfile(id, request.getFullName(), request.getEmail(),
+                request.getPhone(), request.getBirthDate(), LocalDateTime.now());
+        if (updated == 0) {
+            throw new NotFoundException("Customer not found.");
+        }
+        // The bulk update clears the persistence context; this entity is now only a response snapshot.
         customer.setFullName(request.getFullName());
         customer.setEmail(request.getEmail());
         customer.setPhone(request.getPhone());
         customer.setBirthDate(request.getBirthDate());
-        Customer updatedCustomer = customerRepository.save(customer);
-        return toCustomerResponse(updatedCustomer);
+        return toCustomerResponse(customer);
     }
     public void deleteCustomer(UUID id) {
         Customer customer = findCustomerOrThrow(id);
