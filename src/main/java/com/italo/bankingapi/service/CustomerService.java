@@ -43,8 +43,11 @@ public class CustomerService {
                 .birthDate(request.getBirthDate())
                 .createdAt(LocalDateTime.now())
                 .build();
-        Customer savedCustomer = customerRepository.save(customer);
-        return toCustomerResponse(savedCustomer);
+        try {
+            return toCustomerResponse(customerRepository.save(customer));
+        } catch (DataIntegrityViolationException exception) {
+            throw customerConflict(exception);
+        }
     }
     public CustomerResponse findCustomerById(UUID id) {
         Customer customer = findCustomerOrThrow(id);
@@ -60,8 +63,13 @@ public class CustomerService {
         if (emailChanged && customerRepository.existsByEmail(request.getEmail())) {
             throw new ConflictException("E-mail already registered.");
         }
-        int updated = customerRepository.updateProfile(id, request.getFullName(), request.getEmail(),
-                request.getPhone(), request.getBirthDate(), LocalDateTime.now());
+        int updated;
+        try {
+            updated = customerRepository.updateProfile(id, request.getFullName(), request.getEmail(),
+                    request.getPhone(), request.getBirthDate(), LocalDateTime.now());
+        } catch (DataIntegrityViolationException exception) {
+            throw customerConflict(exception);
+        }
         if (updated == 0) {
             throw new NotFoundException("Customer not found.");
         }
@@ -81,6 +89,23 @@ public class CustomerService {
             throw new ConflictException("Customer has related records and cannot be deleted.");
         }
     }
+    private RuntimeException customerConflict(DataIntegrityViolationException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            // Use structured PostgreSQL metadata: parsing localized error text is unreliable.
+            if (cause instanceof org.postgresql.util.PSQLException violation
+                    && "23505".equals(violation.getSQLState()) && violation.getServerErrorMessage() != null) {
+                String constraint = violation.getServerErrorMessage().getConstraint();
+                if ("customers_cpf_key".equals(constraint)) {
+                    return new ConflictException("CPF already registered.");
+                }
+                if ("customers_email_key".equals(constraint)) {
+                    return new ConflictException("E-mail already registered.");
+                }
+            }
+        }
+        return exception;
+    }
+
     private Customer findCustomerOrThrow(UUID id) {
         Customer customer = customerRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Customer not found."));
