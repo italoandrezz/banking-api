@@ -402,6 +402,30 @@ Content-Type: application/json
   Records have no foreign keys to mutable customer/account records so retention
   is independent; deleting replay records would allow their keys to execute again.
 
+### Concurrent customer writes
+
+`PUT /customers/{id}` writes only the profile fields (`fullName`, `email`,
+`phone`, `birthDate`) and `updatedAt`. It cannot overwrite password, role, CPF,
+or creation metadata, including when an operator changes security fields by SQL
+while the request is in progress. Subsequent requests load the current role from
+the database, so an administrator revocation remains effective.
+
+Profile updates use last-write-wins semantics for the complete set of profile
+fields; there is no version/ETag conflict detection. If the customer disappears
+between the ownership check and the update, the API returns `404`.
+
+Database unique constraints remain authoritative for CPF and e-mail. Concurrent
+registration or profile updates that collide with these constraints return `409`
+using the standard error response. Only these known unique constraints are
+translated; unrelated integrity errors are not reported as duplicate customers.
+The implementation reads structured PostgreSQL error metadata rather than
+localized database error messages.
+
+`CustomerConcurrencyHttpTest` exercises real HTTP and PostgreSQL in the isolated
+`banking_api_customer_concurrency_tests` schema. It covers simultaneous CPF/e-mail
+registrations, an e-mail conflict during a profile write, and preservation of a
+concurrent role/password change, including denied administrative access afterward.
+
 ### Customer and administrator authorization
 
 For real HTTP validation of all business endpoints, see
