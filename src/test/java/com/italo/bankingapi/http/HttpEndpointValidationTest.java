@@ -395,6 +395,15 @@ class HttpEndpointValidationTest {
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM transactions", Integer.class));
     }
 
+    @Test @Order(15)
+    void healthcheckIsPublicWithoutExposingComponents() throws Exception {
+        JsonNode health = call("GET", "/actuator/health", null, null, 200);
+        assertEquals("UP", health.path("status").asText());
+        assertEquals(1, health.size());
+        call("GET", "/actuator/env", null, null, 401);
+        call("GET", "/accounts", null, null, 401);
+    }
+
     @Test @Order(99)
     void everyDocumentedBusinessEndpointWasExercised() throws Exception {
         JsonNode paths = call("GET", "/v3/api-docs", null, null, 200).path("paths");
