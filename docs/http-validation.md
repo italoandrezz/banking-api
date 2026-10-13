@@ -5,8 +5,8 @@ application with embedded Tomcat bound to loopback on a random TCP port. Java's
 `HttpClient` sends real HTTP requests. Controllers, JWT security, services,
 repositories and PostgreSQL are real; no MockMvc or mocked dependencies are used.
 
-Validated on 2026-10-12: **309 HTTP requests**, **18 business endpoints**, **15 HTTP
-test scenarios**, all passing. The full Maven suite finished with **231 tests,
+Validated on 2026-10-12: **318 HTTP requests**, **18 business endpoints**, **16 HTTP
+test scenarios**, all passing. The full Maven suite finished with **232 tests,
 zero failures, zero errors and zero skipped tests**. The request count includes
 fixture creation/login and expected error responses, including one induced 500.
 
