@@ -128,6 +128,14 @@ cd banking-api
 
 ### Run the application
 
+For API + PostgreSQL with one command, follow the [Docker Compose guide](docs/docker.md).
+It includes `.env` setup, healthchecks, persistence and an HTTP smoke test.
+
+When running directly with Maven, set `DATABASE_PASSWORD` and `JWT_SECRET` in the
+process environment first. Optional settings include `DATABASE_URL`,
+`DATABASE_USERNAME`, `SERVER_PORT` and `JWT_EXPIRATION`. SQL logging defaults to
+disabled. Docker Compose reads `.env`; Maven/Spring Boot does not load it automatically.
+
 ```bash
 ./mvnw spring-boot:run
 ```
@@ -534,8 +542,8 @@ without exposing parser internals or echoing request data.
 - [x] Password Encryption (BCrypt)
 - [x] JWT Authentication with customer UUID and ownership checks
 - [x] Unit Tests and HTTP ownership/security tests
-- [ ] Docker
-- [ ] Docker Compose
+- [x] Docker
+- [x] Docker Compose
 
 ---
 
