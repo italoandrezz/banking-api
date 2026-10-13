@@ -18,11 +18,21 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import java.time.LocalDateTime;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException exception, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(ErrorResponse.builder()
+                .timestamp(LocalDateTime.now()).status(400).error("Bad Request")
+                .message("Request body is missing or contains invalid JSON or field values.")
+                .path(request.getRequestURI()).build());
+    }
 
     @ExceptionHandler({InvalidStatementQueryException.class, InvalidIdempotencyKeyException.class, InvalidReversalException.class})
     public ResponseEntity<ErrorResponse> handleInvalidStatementQuery(

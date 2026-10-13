@@ -21,11 +21,14 @@ public class UpdateCustomerRequest {
 
     @NotBlank(message = "Email is required.")
     @Email(message = "Email format is invalid.")
+    @jakarta.validation.constraints.Size(max = 150, message = "Email must have at most 150 characters.")
     private String email;
 
     @NotBlank(message = "Phone is required.")
+    @jakarta.validation.constraints.Size(max = 20, message = "Phone must have at most 20 characters.")
     private String phone;
 
     @NotNull(message = "Birth date is required.")
+    @jakarta.validation.constraints.Past(message = "Birth date must be in the past.")
     private LocalDate birthDate;
 }

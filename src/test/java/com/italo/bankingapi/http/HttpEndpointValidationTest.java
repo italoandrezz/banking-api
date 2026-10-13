@@ -348,6 +348,53 @@ class HttpEndpointValidationTest {
         assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM transactions", Integer.class));
     }
 
+    @Test @Order(13)
+    void customerFieldLimitsReturn400WithoutPersistingChanges() throws Exception {
+        String longEmail = "a".repeat(60) + "@" + "b".repeat(60) + "." + "c".repeat(30) + ".com";
+        for (Map.Entry<String, String> invalid : Map.of(
+                "email", longEmail, "phone", "1".repeat(21),
+                "birthDate", java.time.LocalDate.now().plusDays(1).toString()).entrySet()) {
+            Map<String, Object> payload = new HashMap<>(registration("33333333333", "validation@http.test"));
+            payload.put(invalid.getKey(), invalid.getValue());
+            JsonNode error = call("POST", "/customers", null, payload, 400);
+            assertTrue(error.hasNonNull("message"));
+            call("PUT", "/customers/" + owner.id, owner.token, payload, 400);
+        }
+        assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM customers", Integer.class));
+        assertEquals("owner@http.test", call("GET", "/customers/" + owner.id, owner.token, null, 200).path("email").asText());
+        String boundaryEmail = "a".repeat(60) + "@" + "b".repeat(60) + "." + "c".repeat(24) + ".com";
+        assertEquals(150, boundaryEmail.length());
+        Map<String, Object> valid = new HashMap<>(registration("33333333333", boundaryEmail));
+        valid.put("phone", "1".repeat(20));
+        JsonNode created = call("POST", "/customers", null, valid, 201);
+        assertEquals(boundaryEmail, created.path("email").asText());
+        valid.put("email", "updated-boundary@http.test");
+        call("PUT", "/customers/" + owner.id, owner.token, valid, 200);
+    }
+
+    @Test @Order(14)
+    void malformedOrMissingBodiesUseStandardErrorEnvelope() throws Exception {
+        for (String body : List.of("", "{", "{\"amount\":\"not-a-number\"}")) {
+            String path = "/accounts/" + account + "/deposit";
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+                    .timeout(Duration.ofSeconds(20)).header("Authorization", "Bearer " + owner.token)
+                    .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            results.add("| " + scenario + " | POST /accounts/{id}/deposit | 400 | " + response.statusCode()
+                    + " | " + (response.statusCode() == 400 ? "PASS" : "FAIL") + " |");
+            assertEquals(400, response.statusCode());
+            JsonNode error = mapper.readTree(response.body());
+            assertEquals(400, error.path("status").asInt());
+            assertEquals("Bad Request", error.path("error").asText());
+            assertEquals(path, error.path("path").asText());
+            assertTrue(error.hasNonNull("timestamp"));
+            assertEquals("Request body is missing or contains invalid JSON or field values.", error.path("message").asText());
+            assertFalse(error.has("trace"));
+        }
+        balance(account, owner, "0.00");
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM transactions", Integer.class));
+    }
+
     @Test @Order(99)
     void everyDocumentedBusinessEndpointWasExercised() throws Exception {
         JsonNode paths = call("GET", "/v3/api-docs", null, null, 200).path("paths");
