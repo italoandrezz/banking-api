@@ -484,6 +484,13 @@ exercises this endpoint and checks both statement links.
 
 ### Create Customer
 
+Registration and profile updates validate email length (maximum 150 characters),
+phone length (maximum 20 characters) and a birth date strictly before today.
+Invalid values return `400` before persistence. These rules also apply when updating
+existing profiles. Missing bodies, malformed JSON and incompatible field values
+return the standard error envelope (`timestamp`, `status`, `error`, `message`, `path`),
+without exposing parser internals or echoing request data.
+
 **POST** `/customers`
 
 ### Example Request
