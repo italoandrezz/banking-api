@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -64,6 +65,27 @@ class CustomerServiceTest {
 
     @InjectMocks
     private CustomerService customerService;
+
+    @Test
+    void shouldNotMaskUnknownIntegrityErrorsDuringProfileUpdate() {
+        Customer customer = createCustomer();
+        var request = new UpdateCustomerRequest("Updated", customer.getEmail(), "81999999999", LocalDate.of(2000, 1, 1));
+        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        var failure = new org.springframework.dao.DataIntegrityViolationException("Unrelated constraint");
+        when(customerRepository.updateProfile(any(), any(), any(), any(), any(), any())).thenThrow(failure);
+        org.junit.jupiter.api.Assertions.assertSame(failure, assertThrows(
+                org.springframework.dao.DataIntegrityViolationException.class,
+                () -> customerService.updateCustomer(customer.getId(), request)));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenCustomerIsDeletedBeforeProfileWrite() {
+        Customer customer = createCustomer();
+        var request = new UpdateCustomerRequest("Updated", customer.getEmail(), "81999999999", LocalDate.of(2000, 1, 1));
+        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(customerRepository.updateProfile(any(), any(), any(), any(), any(), any())).thenReturn(0);
+        assertThrows(NotFoundException.class, () -> customerService.updateCustomer(customer.getId(), request));
+    }
 
     @Test
     void shouldCreateCustomerSuccessfully() {
@@ -252,7 +274,7 @@ class CustomerServiceTest {
                 "Updated Name", customer.getEmail(), "81988888888", LocalDate.of(1999, 2, 2)
         );
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
-        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(customerRepository.updateProfile(any(), any(), any(), any(), any(), any())).thenReturn(1);
 
         // Act
         CustomerResponse response = customerService.updateCustomer(customer.getId(), request);
@@ -263,7 +285,7 @@ class CustomerServiceTest {
         assertEquals(request.getPhone(), response.getPhone());
         assertEquals(request.getBirthDate(), response.getBirthDate());
         verify(customerRepository, never()).existsByEmail(any());
-        verify(customerRepository, times(1)).save(customer);
+        verify(customerRepository).updateProfile(eq(customer.getId()), eq(request.getFullName()), eq(request.getEmail()), eq(request.getPhone()), eq(request.getBirthDate()), any());
     }
 
     @Test
@@ -275,7 +297,7 @@ class CustomerServiceTest {
         );
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
         when(customerRepository.existsByEmail(request.getEmail())).thenReturn(false);
-        when(customerRepository.save(any(Customer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(customerRepository.updateProfile(any(), any(), any(), any(), any(), any())).thenReturn(1);
 
         // Act
         CustomerResponse response = customerService.updateCustomer(customer.getId(), request);
@@ -283,7 +305,7 @@ class CustomerServiceTest {
         // Assert
         assertEquals(request.getEmail(), response.getEmail());
         verify(customerRepository, times(1)).existsByEmail(request.getEmail());
-        verify(customerRepository, times(1)).save(customer);
+        verify(customerRepository).updateProfile(eq(customer.getId()), eq(request.getFullName()), eq(request.getEmail()), eq(request.getPhone()), eq(request.getBirthDate()), any());
     }
 
     @Test

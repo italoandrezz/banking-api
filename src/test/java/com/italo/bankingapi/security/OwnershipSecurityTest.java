@@ -128,7 +128,7 @@ class OwnershipSecurityTest {
 
     @Test
     void shouldUpdateOwnCustomerAndKeepTokenIdentity() throws Exception {
-        when(customerRepository.save(any(Customer.class))).thenAnswer(call -> call.getArgument(0));
+        when(customerRepository.updateProfile(any(), any(), any(), any(), any(), any())).thenReturn(1);
         mvc.perform(put("/customers/{id}", owner.getId()).header("Authorization", bearer)
                         .contentType(MediaType.APPLICATION_JSON).content(UPDATE))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").value("updated@test.com"));
@@ -146,6 +146,7 @@ class OwnershipSecurityTest {
                 .andExpect(jsonPath("$.message").value("Access denied."))
                 .andExpect(jsonPath("$.trace").doesNotExist());
         verify(customerRepository, never()).save(any());
+        verify(customerRepository, never()).updateProfile(any(), any(), any(), any(), any(), any());
         verify(customerRepository, never()).delete(any());
     }
 
