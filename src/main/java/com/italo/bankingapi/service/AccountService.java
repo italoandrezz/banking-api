@@ -28,6 +28,7 @@ import java.util.concurrent.ThreadLocalRandom;
 @RequiredArgsConstructor
 public class AccountService {
     private static final BigDecimal MAX_BALANCE = new BigDecimal("9999999999999.99");
+    private static final int MAX_CREATION_ATTEMPTS = 10;
 
     private final AccountRepository accountRepository;
     private final CustomerRepository customerRepository;
@@ -37,17 +38,35 @@ public class AccountService {
     public AccountResponse createAccount(CreateAccountRequest request) {
         Customer customer = findCustomerOrThrow(request.getCustomerId());
         authenticatedCustomer.requireOwner(customer.getId());
-        String accountNumber = generateUniqueAccountNumber();
-        Account account = Account.builder()
-                .customer(customer)
-                .accountNumber(accountNumber)
-                .agency("0001")
-                .balance(BigDecimal.ZERO)
-                .status(AccountStatus.ACTIVE)
-                .createdAt(LocalDateTime.now())
-                .build();
-        Account savedAccount = accountRepository.save(account);
-        return toAccountResponse(savedAccount);
+        for (int attempt = 0; attempt < MAX_CREATION_ATTEMPTS; attempt++) {
+            String accountNumber = String.valueOf(ThreadLocalRandom.current().nextInt(10_000_000, 100_000_000));
+            if (accountRepository.existsByAccountNumber(accountNumber)) continue;
+            Account account = Account.builder()
+                    .customer(customer)
+                    .accountNumber(accountNumber)
+                    .agency("0001")
+                    .balance(BigDecimal.ZERO)
+                    .status(AccountStatus.ACTIVE)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            try {
+                return toAccountResponse(accountRepository.saveNewAccount(account));
+            } catch (org.springframework.dao.DataIntegrityViolationException exception) {
+                for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+                    if (cause instanceof org.postgresql.util.PSQLException pg && pg.getServerErrorMessage() != null) {
+                        String constraint = pg.getServerErrorMessage().getConstraint();
+                        if ("23503".equals(pg.getSQLState()) && "fk_accounts_customers".equals(constraint)) {
+                            throw new NotFoundException("Customer not found.");
+                        }
+                        if ("23505".equals(pg.getSQLState()) && "accounts_account_number_key".equals(constraint)) {
+                            break;
+                        }
+                    }
+                    if (cause.getCause() == null) throw exception;
+                }
+            }
+        }
+        throw new ConflictException("Unable to allocate an account number. Please retry.");
     }
     public AccountResponse findAccountById(UUID id) {
         Account account = findOwnedAccountOrThrow(id);
@@ -92,16 +111,6 @@ public class AccountService {
         if (account.getStatus() != AccountStatus.ACTIVE) {
             throw new ConflictException("Account must be ACTIVE for financial operations.");
         }
-    }
-    private String generateUniqueAccountNumber() {
-        String accountNumber;
-        do {
-            accountNumber = String.valueOf(
-                    ThreadLocalRandom.current()
-                            .nextInt(10_000_000, 100_000_000)
-            );
-        } while (accountRepository.existsByAccountNumber(accountNumber));
-        return accountNumber;
     }
     @Transactional
     public AccountResponse deposit(UUID id, DepositRequest request) {

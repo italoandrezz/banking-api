@@ -422,6 +422,24 @@ registration without persistence, authentication with accepted passwords, and
 compatibility with an existing short password using real HTTP and PostgreSQL in
 the isolated `banking_api_password_tests` schema.
 
+### Concurrent account creation
+
+Account-number availability checks are advisory; the database unique constraint
+is authoritative. Account creation makes at most 10 allocation attempts. A number
+collision at insertion is retried in a new transaction after the failed attempt
+rolls back. Exhausting the attempts returns `409` with the standard error envelope.
+Unrelated integrity errors are not retried or disguised as number collisions.
+
+If a customer is deleted after the ownership check but before account insertion,
+the customer foreign-key violation returns `404` rather than `500`. If account
+creation commits first, deleting the customer returns `409` and preserves the
+customer and account. Existing ownership restrictions remain in force.
+
+`AccountCreationHttpTest` uses real HTTP and PostgreSQL in the isolated
+`banking_api_creation_tests` schema. It coordinates a concurrent deletion with a
+database lock and forces unique-index collisions using a test-only trigger to
+verify recovery, bounded retries, and absence of partially created accounts.
+
 ### Concurrent customer writes
 
 `PUT /customers/{id}` writes only the profile fields (`fullName`, `email`,
