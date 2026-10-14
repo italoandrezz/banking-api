@@ -80,13 +80,35 @@ class AccountServiceTest {
     private AccountService accountService;
 
     @Test
+    void shouldBoundAvailabilityChecksWhenAllNumbersAreTaken() {
+        Customer customer = createCustomer();
+        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(accountRepository.existsByAccountNumber(any())).thenReturn(true);
+        assertThrows(ConflictException.class, () -> accountService.createAccount(new CreateAccountRequest(customer.getId())));
+        verify(accountRepository, times(10)).existsByAccountNumber(any());
+        verify(accountRepository, never()).saveNewAccount(any());
+    }
+
+    @Test
+    void shouldNotRetryUnrelatedIntegrityErrors() {
+        Customer customer = createCustomer();
+        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        var failure = new org.springframework.dao.DataIntegrityViolationException("Unrelated constraint");
+        when(accountRepository.saveNewAccount(any())).thenThrow(failure);
+        org.junit.jupiter.api.Assertions.assertSame(failure, assertThrows(
+                org.springframework.dao.DataIntegrityViolationException.class,
+                () -> accountService.createAccount(new CreateAccountRequest(customer.getId()))));
+        verify(accountRepository, times(1)).saveNewAccount(any());
+    }
+
+    @Test
     void shouldCreateAccountSuccessfully() {
         // Arrange
         Customer customer = createCustomer();
         CreateAccountRequest request = new CreateAccountRequest(customer.getId());
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
         when(accountRepository.existsByAccountNumber(any())).thenReturn(false);
-        when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> {
+        when(accountRepository.saveNewAccount(any(Account.class))).thenAnswer(invocation -> {
             Account account = invocation.getArgument(0);
             account.setId(UUID.randomUUID());
             return account;
@@ -104,7 +126,7 @@ class AccountServiceTest {
         assertNotNull(response.getCreatedAt());
         assertEquals(8, response.getAccountNumber().length());
         verify(accountRepository, times(1)).existsByAccountNumber(response.getAccountNumber());
-        verify(accountRepository, times(1)).save(any(Account.class));
+        verify(accountRepository, times(1)).saveNewAccount(any(Account.class));
     }
 
     @Test
@@ -114,7 +136,7 @@ class AccountServiceTest {
         CreateAccountRequest request = new CreateAccountRequest(customer.getId());
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
         when(accountRepository.existsByAccountNumber(any())).thenReturn(true, false);
-        when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> {
+        when(accountRepository.saveNewAccount(any(Account.class))).thenAnswer(invocation -> {
             Account account = invocation.getArgument(0);
             account.setId(UUID.randomUUID());
             return account;
@@ -126,7 +148,7 @@ class AccountServiceTest {
         // Assert
         assertNotNull(response.getAccountNumber());
         verify(accountRepository, times(2)).existsByAccountNumber(any());
-        verify(accountRepository, times(1)).save(any(Account.class));
+        verify(accountRepository, times(1)).saveNewAccount(any(Account.class));
     }
 
     @Test
@@ -145,7 +167,7 @@ class AccountServiceTest {
         // Assert
         assertEquals("Customer not found.", exception.getMessage());
         verify(accountRepository, never()).existsByAccountNumber(any());
-        verify(accountRepository, never()).save(any(Account.class));
+        verify(accountRepository, never()).saveNewAccount(any(Account.class));
     }
 
     @Test

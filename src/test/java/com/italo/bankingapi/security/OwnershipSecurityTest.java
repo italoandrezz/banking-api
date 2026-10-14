@@ -256,11 +256,12 @@ class OwnershipSecurityTest {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.status").value(403));
         verify(accountRepository, never()).save(any());
         verify(accountRepository, never()).existsByAccountNumber(any());
+        verify(accountRepository, never()).saveNewAccount(any());
     }
 
     @Test
     void shouldCreateAccountForAuthenticatedCustomer() throws Exception {
-        when(accountRepository.save(any(Account.class))).thenAnswer(call -> {
+        when(accountRepository.saveNewAccount(any(Account.class))).thenAnswer(call -> {
             Account account = call.getArgument(0);
             account.setId(UUID.randomUUID());
             return account;
