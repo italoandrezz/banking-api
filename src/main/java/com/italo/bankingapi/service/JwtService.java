@@ -8,32 +8,46 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Date;
 import java.util.UUID;
 
 @Service
 public class JwtService {
 
-    @Value("${jwt.secret}")
-    private String secret;
+    // Access tokens have no individual revocation; cap their lifetime at the existing 24h default.
+    private static final long MAX_EXPIRATION_MILLIS = Duration.ofHours(24).toMillis();
 
-    @Value("${jwt.expiration}")
-    private long expirationTime;
+    private final SecretKey signingKey;
+    private final long expirationTime;
 
-    private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    public JwtService(@Value("${jwt.secret:}") String secret,
+                      @Value("${jwt.expiration:86400000}") long expirationTime) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalArgumentException("JWT_SECRET (jwt.secret) must be present and non-blank.");
+        }
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 32) {
+            throw new IllegalArgumentException("JWT_SECRET (jwt.secret) must contain at least 32 UTF-8 bytes for HMAC signing.");
+        }
+        if (expirationTime <= 0 || expirationTime > MAX_EXPIRATION_MILLIS) {
+            throw new IllegalArgumentException("JWT_EXPIRATION (jwt.expiration) must be between 1 and 86400000 milliseconds (24 hours).");
+        }
+        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+        this.expirationTime = expirationTime;
     }
     public String generateToken(UUID customerId) {
+        Date issuedAt = new Date();
         return Jwts.builder()
                 .subject(customerId.toString())
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationTime))
-                .signWith(getSigningKey())
+                .issuedAt(issuedAt)
+                .expiration(new Date(issuedAt.getTime() + expirationTime))
+                .signWith(signingKey)
                 .compact();
     }
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
+                .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
