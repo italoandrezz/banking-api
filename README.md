@@ -402,6 +402,28 @@ Content-Type: application/json
   Records have no foreign keys to mutable customer/account records so retention
   is independent; deleting replay records would allow their keys to execute again.
 
+### Text and date boundaries
+
+Customer names, e-mails and phone numbers, login e-mails, and administrative
+reversal reasons reject the null character (`U+0000`) with `400` and the standard
+error envelope. PostgreSQL cannot store that character in text columns. The API
+rejects it instead of silently removing it; valid Unicode, accents, emoji and
+line breaks remain subject to the existing field-specific rules. Passwords keep
+their separate policy because the database stores their BCrypt hash.
+
+Birth dates and statement date filters accept years `0001` through `9999`
+inclusive (`0001-01-01` to `9999-12-31`). Birth dates must additionally be in the
+past; this range does not establish an age-eligibility policy. Year zero, negative
+years, expanded years above 9999 and invalid calendar dates return `400`.
+The same birth-date rules apply to registration and profile updates. Statement
+end dates remain inclusive, including the upper supported boundary.
+
+`InputBoundariesHttpTest` exercises these limits through real HTTP and PostgreSQL
+in the isolated `banking_api_input_tests` schema. Rejected registration/profile
+requests leave customer data unchanged; a rejected reversal leaves balances and
+history unchanged. Accepted Unicode text and the minimum birth date are checked
+against persisted values.
+
 ### Password validation
 
 New customers must provide a nonblank password with at least 8 Unicode code points

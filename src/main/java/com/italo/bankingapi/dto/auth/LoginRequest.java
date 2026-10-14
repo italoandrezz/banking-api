@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 public class LoginRequest {
     @NotBlank(message = "E-mail is required.")
     @Email(message = "E-mail must be valid.")
+    @com.italo.bankingapi.validation.NoNullCharacter
     private String email;
 
     @NotBlank(message = "Password is required.")
