@@ -67,7 +67,9 @@ $env:JWT_SECRET = 'SUBSTITUA_POR_UM_SEGREDO_ALEATORIO_DE_32_OU_MAIS_CARACTERES'
 
 No Linux/macOS, use `export` para as variáveis e `./mvnw spring-boot:run`. O Maven Wrapper dispensa instalação separada do Maven. O Spring Boot não lê o `.env` automaticamente nessa forma de execução.
 
-Variáveis opcionais: `SERVER_PORT` (padrão `8080`), `JWT_EXPIRATION` em milissegundos (padrão `86400000`) e `SHOW_SQL` (padrão `false`). O Flyway aplica as migrations na inicialização.
+Variáveis opcionais: `SERVER_PORT` (padrão `8080`), `JWT_EXPIRATION` em milissegundos (de `1` a `86400000`, padrão `86400000`) e `SHOW_SQL` (padrão `false`). O Flyway aplica as migrations na inicialização.
+
+A inicialização falha se `JWT_SECRET` estiver ausente, em branco ou tiver menos de 32 bytes UTF-8, ou se a duração JWT for inválida. A chave continua sendo texto UTF-8, sem decodificação Base64. Use um segredo aleatório; tamanho mínimo não garante entropia. O limite de 24 horas mantém o padrão existente e limita a validade de tokens sem revogação individual. Chaves maiores continuam selecionando o algoritmo HMAC adequado. Consulte as [decisões de atualização das dependências](docs/dependency-security.md).
 
 ## Autenticação e acesso
 
@@ -216,7 +218,7 @@ Por padrão, o perfil `test` usa `localhost:5432/banking_api_test`, usuário `po
 
 No Linux/macOS, use `./mvnw clean verify`. As suítes usam schemas de teste e limpam seus dados; não aponte essas variáveis para um banco de produção nem execute as suítes de banco em paralelo no mesmo ambiente.
 
-A última validação da mudança de limites de entrada passou com **274 testes**, incluindo testes unitários, integração com PostgreSQL e HTTP real. A cobertura inclui autorização, concorrência, rollback, idempotência e estornos. Isso não substitui teste de carga ou avaliação de segurança em produção.
+A validação das atualizações de dependências e configuração JWT passou com **299 testes**, incluindo testes unitários, integração com PostgreSQL e HTTP real. A cobertura inclui autorização, concorrência, rollback, idempotência e estornos. Isso não substitui teste de carga ou avaliação de segurança em produção.
 
 O GitHub Actions executa dois checks: `build` e `Docker Compose validation`. O segundo constrói a imagem, aguarda a saúde dos serviços e executa o teste HTTP do Compose. A `develop` exige PR, ambos os checks aprovados, branch atualizada e conversas resolvidas; force push e exclusão estão bloqueados, inclusive para administradores.
 
