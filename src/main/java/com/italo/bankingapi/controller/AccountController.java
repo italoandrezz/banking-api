@@ -107,6 +107,8 @@ public class AccountController {
             )
     })
     @PostMapping
+    @ApiResponse(responseCode = "409", description = "Account number allocation exhausted; retry the request",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public ResponseEntity<AccountResponse> createAccount(@Valid @RequestBody CreateAccountRequest request) {
         AccountResponse response = accountService.createAccount(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
