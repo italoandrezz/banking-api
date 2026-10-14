@@ -40,7 +40,10 @@ public class TransactionService {
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new InvalidStatementQueryException("Start date must not be after end date.");
         }
-        if (LocalDate.MAX.equals(endDate)) { throw new InvalidStatementQueryException("End date is out of range."); }
+        if (!com.italo.bankingapi.validation.SupportedDateValidator.isSupported(startDate)
+                || !com.italo.bankingapi.validation.SupportedDateValidator.isSupported(endDate)) {
+            throw new InvalidStatementQueryException("Statement dates must be between 0001-01-01 and 9999-12-31.");
+        }
         Account account = findAccountOrThrow(accountId);
         authenticatedCustomer.requireOwner(account.getCustomer().getId());
         var transactions = transactionRepository.findStatement(account.getId(),

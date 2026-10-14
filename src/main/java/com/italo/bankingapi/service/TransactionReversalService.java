@@ -31,8 +31,9 @@ public class TransactionReversalService {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public ReversalResponse reverse(UUID id, ReversalRequest request) {
-        if (request == null || request.reason() == null || request.reason().isBlank() || request.reason().length() > 255) {
-            throw new InvalidReversalException("Reversal reason must contain 1 to 255 characters and must not be blank.");
+        if (request == null || request.reason() == null || request.reason().isBlank() || request.reason().length() > 255
+                || request.reason().indexOf('\0') >= 0) {
+            throw new InvalidReversalException("Reversal reason must contain 1 to 255 characters, must not be blank and must not contain U+0000.");
         }
         UUID adminId = authenticatedCustomer.getCustomer().getId();
         var original = transactions.findOriginalForUpdate(id)
