@@ -1,643 +1,233 @@
-# 🏦 Banking API
+# Banking API
 
+API REST em Java 17 e Spring Boot para simular operações bancárias. Projeto de estudo e portfólio com autenticação JWT, PostgreSQL e testes automatizados.
 
+## Funcionalidades
 
-A RESTful Banking API built with **Java 17** and **Spring Boot** to simulate banking operations while applying modern backend development best practices.
+- Cadastro, consulta, atualização e exclusão do próprio cliente.
+- Criação e consulta de contas, bloqueio, desbloqueio e encerramento.
+- Depósitos, saques e transferências com histórico e controle de concorrência.
+- Extrato paginado com filtros por período e tipo de transação.
+- Idempotência opcional nas movimentações financeiras.
+- Estorno administrativo com registro do responsável e motivo.
+- Validação de entradas e respostas de erro padronizadas.
 
-This project is part of my backend learning journey, where I apply clean architecture principles, REST API design, Spring ecosystem technologies, and PostgreSQL to build a real-world banking application.
+## Tecnologias e arquitetura
 
----
+Java 17, Spring Boot, Spring Web, Spring Data JPA, Spring Security, Bean Validation, PostgreSQL, Flyway, Springdoc OpenAPI, Maven e Docker Compose.
 
-## 📌 Current Status
+O código segue uma arquitetura em camadas: `controller` recebe as requisições, `service` aplica as regras de negócio e `repository` acessa o banco. DTOs definem os contratos de entrada e saída; entidades representam a persistência. As migrations ficam em `src/main/resources/db/migration`.
 
-This project is under active development following a feature-branch workflow.
+## Executar com Docker Compose
 
-Implemented features:
-
-- Customer CRUD
-- Banking Accounts
-- Money Transfers
-- Transaction History
-- Swagger/OpenAPI Documentation
-
----
-
-## 🚀 Technologies
-
-- Java 17
-- Spring Boot
-- Spring Web
-- Spring Data JPA
-- Spring Security
-- Bean Validation
-- PostgreSQL
-- Flyway
-- Springdoc OpenAPI (Swagger)
-- Lombok
-- Maven
-- Postman
-
----
-
-## 🏛️ Architecture
-
-The project follows a layered architecture:
-
-```text
-           HTTP Request
-                 │
-                 ▼
-         REST Controller
-                 │
-                 ▼
-          Service Layer
-                 │
-                 ▼
-        Repository Layer
-                 │
-                 ▼
-            PostgreSQL
-```
-
----
-
-## 📁 Project Structure
-
-```text
-src
-├── controller
-├── service
-├── repository
-├── entity
-├── dto
-├── exception
-│   └── handler
-├── config
-└── resources
-```
-
----
-
-## ✅ Current Features
-
-### Customers
-
-- Customer registration
-- Customer CRUD
-- Request validation using Bean Validation
-- Global exception handling
-- Duplicate CPF validation
-- Duplicate email validation
-
-### Accounts
-
-- Create bank account
-- List accounts
-- Find account by ID
-- Deposit
-- Withdraw
-- Transfer between accounts
-
-### Transactions
-
-- Automatic transaction history
-- Deposit history
-- Withdraw history
-- Transfer history
-
-### API Documentation
-
-- Swagger UI
-- OpenAPI 3 documentation
-
----
-
-## ▶️ Running the Project
-
-### Clone the repository
+Requisitos: Git, Docker com containers Linux e Docker Compose v2.
 
 ```bash
 git clone https://github.com/italoandrezz/banking-api.git
-```
-
-### Navigate to the project
-
-```bash
 cd banking-api
+git switch develop
 ```
 
-### Run the application
+Copie `.env.example` para `.env` e preencha `DB_PASSWORD` e `JWT_SECRET` com segredos distintos. Use um segredo JWT aleatório com pelo menos 32 caracteres ASCII. No PowerShell:
 
-For API + PostgreSQL with one command, follow the [Docker Compose guide](docs/docker.md).
-It includes `.env` setup, healthchecks, persistence and an HTTP smoke test.
-
-When running directly with Maven, set `DATABASE_PASSWORD` and `JWT_SECRET` in the
-process environment first. Optional settings include `DATABASE_URL`,
-`DATABASE_USERNAME`, `SERVER_PORT` and `JWT_EXPIRATION`. SQL logging defaults to
-disabled. Docker Compose reads `.env`; Maven/Spring Boot does not load it automatically.
-
-```bash
-./mvnw spring-boot:run
+```powershell
+Copy-Item .env.example .env
+# Preencha os segredos no arquivo .env antes de iniciar.
+docker compose up -d --build --wait
 ```
 
-The API will be available at:
-
-```text
-http://localhost:8080
-```
----
-
-## 📖 API Documentation
-
-Once the application is running, access:
-
-```text
-http://localhost:8080/swagger-ui/index.html
-```
-
----
-
-## Running tests
-
-The Spring context and database integration tests use the `test` profile and a
-dedicated PostgreSQL database. Create it once using a PostgreSQL user with
-permission to create databases:
-
-```sql
-CREATE DATABASE banking_api_test;
-```
-
-By default, tests connect to `localhost:5432/banking_api_test` with user
-`postgres` and password `admin`. Override these values with
-`TEST_DATABASE_URL`, `TEST_DATABASE_USERNAME` and `TEST_DATABASE_PASSWORD`.
-Use a dedicated test database, never a production database.
-
-Flyway applies the existing migrations to the `banking_api_tests` schema.
-Integration fixtures are disposable and may be cleared between tests in that
-schema. The test profile supplies its own test-only JWT key, so running tests
-does not require `JWT_SECRET`.
-
-```bash
-./mvnw clean test
-./mvnw clean verify
-```
-
-On Windows, use `.\mvnw.cmd`. GitHub Actions provisions a separate PostgreSQL
-test database and uses the same configuration.
-
-The workflow also has an independent Docker Compose job that builds the image,
-waits for API/database healthchecks and runs the HTTP smoke test. Failed runs
-upload diagnostic logs; containers and volumes are cleaned up at the end.
-See [CI configuration](docs/ci.md) for triggers, limits and required-check setup.
-
-### Financial atomicity
-
-Deposits, withdrawals and transfers execute balance changes and transaction
-history in a single database transaction. A persistence failure rolls back
-the entire operation.
-
-`AccountServiceIntegrationTest` uses real services, repositories and PostgreSQL.
-Tests are not wrapped in a test-managed transaction: they read persisted balances
-and history through JDBC after the service call finishes. Test-only deferred
-triggers simulate failures when committing history or crediting the destination.
-The suite checks successful operations, complete rollback and preservation of
-previously committed transactions. Fixtures and failure triggers are removed
-between tests; run these database tests sequentially.
-
-Balance-changing operations acquire JPA pessimistic write locks until commit or
-rollback. Transfers lock both accounts in UUID order, including crossed transfers,
-to avoid opposite lock acquisition orders. Read-only account queries do not lock.
-
-`AccountConcurrencyIntegrationTest` checks simultaneous withdrawals, deposits,
-same-direction transfers and crossed transfers against PostgreSQL. Each worker
-has its own authentication context and service transaction. A start barrier and
-database lock contention ensure the operations overlap; bounded waits detect hangs.
-Run database tests sequentially against the dedicated test schema.
-
-### Monetary limits
-
-Deposits, withdrawals and transfers require a positive amount with at most 13
-integer digits and 2 decimal places (maximum `9999999999999.99`, matching
-`NUMERIC(15,2)`). Values are rejected rather than rounded; `1.000` is also rejected.
-Invalid amounts return HTTP 400. Deposits or transfers that would exceed the
-maximum balance return HTTP 409 without changing balances or transaction history.
-The service also validates amounts when called directly, outside HTTP controllers.
-
-### Block and unblock accounts
-
-The authenticated owner can call `PATCH /accounts/{id}/block` to change an ACTIVE
-account to BLOCKED, and `PATCH /accounts/{id}/unblock` to restore a BLOCKED account
-to ACTIVE. Neither endpoint requires a body; both return HTTP 200 with the account.
-Repeated or invalid transitions return 409. CLOSED accounts cannot be reopened.
-Missing authentication returns 401, another owner's account returns 403, and a
-nonexistent account returns 404.
-
-Only ACTIVE accounts can deposit, withdraw, send or receive transfers. Other
-states return 409 without changing balances or history. Blocking is allowed with
-a nonzero balance; account lookup and transaction history remain available.
-Status changes update `updatedAt` and acquire the same pessimistic lock used by
-financial operations. A concurrent movement either commits before the block or
-sees the blocked state and fails. Blocking/unblocking does not create a financial
-transaction or remove previous history.
-
-```bash
-curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/block \
-  -H "Authorization: Bearer TOKEN"
-curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/unblock \
-  -H "Authorization: Bearer TOKEN"
-```
-
-### Close an account
-
-`PATCH /accounts/{id}/close` permanently changes an ACTIVE account with zero
-balance to CLOSED. Only the authenticated owner can close the account. No request
-body is required; success returns HTTP 200 with the updated account.
-
-A nonzero balance, a BLOCKED account or an already CLOSED account returns 409.
-Blocked accounts must be unblocked first. Missing authentication returns 401,
-another owner's account returns 403, and a nonexistent account returns 404.
-
-Closure updates `updatedAt`, preserves the account and its transaction history,
-and does not create a financial transaction. Owners can still consult their
-closed accounts and history, but cannot reopen them or perform financial
-operations on them, including receiving transfers.
-
-The zero-balance check and status change hold the same pessimistic lock as
-financial operations. If incoming money commits first, closure is rejected;
-if closure commits first, the incoming movement is rejected.
-
-```bash
-curl -X PATCH http://localhost:8080/accounts/ACCOUNT_UUID/close \
-  -H "Authorization: Bearer TOKEN"
-```
-
-## Authentication and account ownership
-
-Register through `POST /customers`, then log in through `POST /auth/login` with e-mail and password.
-Send the returned token as `Authorization: Bearer <token>` on private endpoints.
-Configure `JWT_SECRET` with a strong HMAC secret of at least 32 UTF-8 bytes before starting the application.
-
-JWT subjects contain the immutable customer UUID. Tokens issued with e-mail subjects are no longer accepted: log in again.
-Changing an e-mail does not change the customer's token identity.
-
-- `GET /customers` returns 403 for authenticated customers; there is no administrator listing.
-- `GET/PUT/DELETE /customers/{id}` operate only on the authenticated customer's own ID.
-- `POST /accounts` retains `customerId`, which must match the authenticated customer.
-- `GET /accounts` lists only the authenticated customer's accounts.
-- Account lookup, deposit, withdrawal and transaction history require account ownership.
-- Transfers require ownership of the source account; the destination may belong to another customer.
-- Missing/invalid authentication returns 401; an existing resource belonging to another customer returns 403; a nonexistent resource returns 404.
-
-Deposits represent the authenticated account holder's operation, not an external payment intake.
-
----
-
-## 📡 Available Endpoints
-
-### Customers
-
-| Method | Endpoint |
-|---------|----------|
-| POST | /customers |
-| GET | /customers (403; listing unavailable) |
-| GET | /customers/{id} |
-| PUT | /customers/{id} |
-| DELETE | /customers/{id} |
-
-### Accounts
-
-| Method | Endpoint |
-|---------|----------|
-| POST | /accounts |
-| GET | /accounts |
-| GET | /accounts/{id} |
-| PATCH | /accounts/{id}/block |
-| PATCH | /accounts/{id}/unblock |
-| PATCH | /accounts/{id}/close |
-| POST | /accounts/{id}/deposit |
-| POST | /accounts/{id}/withdraw |
-| POST | /accounts/transfer |
-
-### Transactions
-
-| Method | Endpoint |
-|---------|----------|
-| GET | /accounts/{id}/transactions |
-
-### Paginated account statement
-
-See also the financial retry contract below before retrying deposits, withdrawals or transfers.
-
-`GET /accounts/{id}/transactions?page=0&size=20&startDate=2026-10-01&endDate=2026-10-31&type=TRANSFER`
-
-Requires the account owner's bearer token. Includes outgoing and received transfers;
-history remains available for blocked and closed accounts.
-
-| Parameter | Default | Rules |
-|-----------|---------|-------|
-| `page` | `0` | Zero-based, nonnegative; `page * size` must fit a signed 32-bit integer |
-| `size` | `20` | Between 1 and 100 |
-| `startDate` | None | Inclusive date in `yyyy-MM-dd` format |
-| `endDate` | None | Inclusive date in `yyyy-MM-dd` format; cannot precede `startDate` |
-| `type` | All | `DEPOSIT`, `WITHDRAW` or `TRANSFER` (case-sensitive) |
-
-Filters are optional and can be combined. Dates use the calendar of the stored
-transaction timestamp (without timezone conversion). The end date includes the
-whole day, excluding midnight of the following day. Invalid parameters return `400`.
-
-**Breaking response change:** this endpoint now returns a page object instead of a
-bare array. Clients must read transactions from `content` and request additional pages.
-Each item keeps the existing transaction fields.
-
-```json
-{
-  "content": [],
-  "page": 0,
-  "size": 20,
-  "totalElements": 0,
-  "totalPages": 0
-}
-```
-
-Results are ordered by `createdAt DESC, id DESC`, including a UUID tie-breaker for
-equal timestamps. Totals reflect the account and selected filters. Pages beyond
-the last page return empty `content` with the matching totals. Separate page
-requests do not share a snapshot: newly inserted transactions can shift offsets.
-Flyway migration V2 adds indexes for origin and destination statement queries.
-
-### Financial operation retries
-
-The deposit, withdrawal and transfer endpoints accept an optional `Idempotency-Key`
-header. Generate a new key (for example, a UUID) for each intended operation and
-reuse it for retries of that same operation:
-
-```http
-POST /accounts/ACCOUNT_UUID/deposit
-Authorization: Bearer YOUR_TOKEN
-Idempotency-Key: 4e28d1c9-2017-4148-9031-cabf326b5f21
-Content-Type: application/json
-
-{"amount": 25.00}
-```
-
-- Without the header, every successful request executes independently, preserving
-  the previous behavior.
-- Keys are case-sensitive, scoped to the authenticated customer across all three
-  endpoints, and contain 1–128 ASCII letters, digits, `.`, `_`, `:` or `-`.
-  Invalid keys return `400`.
-- A successful retry returns `200` with the original `AccountResponse` snapshot,
-  even if subsequent operations changed the balance or account status. Read the
-  account endpoint to obtain its current state.
-- The operation, source account, destination account and amount must match.
-  Amounts such as `25`, `25.0` and `25.00` are equivalent. Reusing a key with
-  different data returns `409` without moving money again.
-- Authentication and source account ownership are checked before replay. A key
-  never grants access to another customer's response.
-- Concurrent requests for the same customer/key wait for the initial database
-  transaction. After success they replay its result; after rollback one may retry
-  the operation. Failed operations are not cached.
-- Migration V3 stores the response and request identity in PostgreSQL. The key,
-  balances and transaction history commit or roll back together. Records survive
-  application restarts; there is currently no expiration or automatic cleanup.
-  Records have no foreign keys to mutable customer/account records so retention
-  is independent; deleting replay records would allow their keys to execute again.
-
-### Text and date boundaries
-
-Customer names, e-mails and phone numbers, login e-mails, and administrative
-reversal reasons reject the null character (`U+0000`) with `400` and the standard
-error envelope. PostgreSQL cannot store that character in text columns. The API
-rejects it instead of silently removing it; valid Unicode, accents, emoji and
-line breaks remain subject to the existing field-specific rules. Passwords keep
-their separate policy because the database stores their BCrypt hash.
-
-Birth dates and statement date filters accept years `0001` through `9999`
-inclusive (`0001-01-01` to `9999-12-31`). Birth dates must additionally be in the
-past; this range does not establish an age-eligibility policy. Year zero, negative
-years, expanded years above 9999 and invalid calendar dates return `400`.
-The same birth-date rules apply to registration and profile updates. Statement
-end dates remain inclusive, including the upper supported boundary.
-
-`InputBoundariesHttpTest` exercises these limits through real HTTP and PostgreSQL
-in the isolated `banking_api_input_tests` schema. Rejected registration/profile
-requests leave customer data unchanged; a rejected reversal leaves balances and
-history unchanged. Accepted Unicode text and the minimum birth date are checked
-against persisted values.
-
-### Password validation
-
-New customers must provide a nonblank password with at least 8 Unicode code points
-and at most 72 bytes when encoded as UTF-8. The maximum follows the BCrypt input
-limit: 72 ASCII characters, 36 two-byte accented characters, or 18 four-byte emoji
-can fit. Combining characters count separately; passwords are not normalized,
-trimmed, or truncated. No mandatory character-category rules are imposed.
-
-Invalid registration passwords return `400` with the standard error envelope
-before hashing or persistence. Login also rejects passwords above 72 UTF-8 bytes
-with `400`, regardless of whether the e-mail exists. The new minimum applies only
-to registration: existing customers with shorter passwords can still log in.
-Incorrect credentials within the accepted login limits continue to return `401`.
-No existing password hashes are rewritten.
-
-`PasswordValidationHttpTest` verifies ASCII and multibyte boundaries, invalid
-registration without persistence, authentication with accepted passwords, and
-compatibility with an existing short password using real HTTP and PostgreSQL in
-the isolated `banking_api_password_tests` schema.
-
-### Concurrent account creation
-
-Account-number availability checks are advisory; the database unique constraint
-is authoritative. Account creation makes at most 10 allocation attempts. A number
-collision at insertion is retried in a new transaction after the failed attempt
-rolls back. Exhausting the attempts returns `409` with the standard error envelope.
-Unrelated integrity errors are not retried or disguised as number collisions.
-
-If a customer is deleted after the ownership check but before account insertion,
-the customer foreign-key violation returns `404` rather than `500`. If account
-creation commits first, deleting the customer returns `409` and preserves the
-customer and account. Existing ownership restrictions remain in force.
-
-`AccountCreationHttpTest` uses real HTTP and PostgreSQL in the isolated
-`banking_api_creation_tests` schema. It coordinates a concurrent deletion with a
-database lock and forces unique-index collisions using a test-only trigger to
-verify recovery, bounded retries, and absence of partially created accounts.
-
-### Concurrent customer writes
-
-`PUT /customers/{id}` writes only the profile fields (`fullName`, `email`,
-`phone`, `birthDate`) and `updatedAt`. It cannot overwrite password, role, CPF,
-or creation metadata, including when an operator changes security fields by SQL
-while the request is in progress. Subsequent requests load the current role from
-the database, so an administrator revocation remains effective.
-
-Profile updates use last-write-wins semantics for the complete set of profile
-fields; there is no version/ETag conflict detection. If the customer disappears
-between the ownership check and the update, the API returns `404`.
-
-Database unique constraints remain authoritative for CPF and e-mail. Concurrent
-registration or profile updates that collide with these constraints return `409`
-using the standard error response. Only these known unique constraints are
-translated; unrelated integrity errors are not reported as duplicate customers.
-The implementation reads structured PostgreSQL error metadata rather than
-localized database error messages.
-
-`CustomerConcurrencyHttpTest` exercises real HTTP and PostgreSQL in the isolated
-`banking_api_customer_concurrency_tests` schema. It covers simultaneous CPF/e-mail
-registrations, an e-mail conflict during a profile write, and preservation of a
-concurrent role/password change, including denied administrative access afterward.
-
-### Customer and administrator authorization
-
-For real HTTP validation of all business endpoints, see
-[HTTP validation](docs/http-validation.md), including execution instructions,
-coverage and known limits.
-
-Flyway V4 adds the `CUSTOMER` and `ADMIN` roles. Existing customers and public
-registrations receive `CUSTOMER`. Registration and profile updates cannot assign
-roles, even when a client sends a `role` field.
-
-`GET /auth/me` requires a bearer token and returns the authenticated identity:
-
-```json
-{"customerId": "UUID", "role": "CUSTOMER"}
-```
-
-The JWT identifies the customer; authorities are loaded from the database on each
-request. Promotion or revocation takes effect on the next request with the same
-token. Role claims in a token do not grant privileges.
-
-`/admin` and `/admin/**` require `ADMIN`. Missing authentication returns `401`;
-an authenticated customer without the role receives the standard JSON `403` error.
-Method security is enabled for administrative services with
-`@PreAuthorize("hasRole('ADMIN')")`. Account/customer ownership checks still apply
-to administrators on existing endpoints.
-
-Administrative transaction reversal is available as described below. No default
-administrator, public promotion endpoint or seeded password is created.
-An authorized database operator can provision an existing identity explicitly:
-
-```sql
--- Replace the placeholder with the verified customer's UUID. Expect one row.
-UPDATE customers SET role = 'ADMIN' WHERE id = 'CUSTOMER_UUID' AND role = 'CUSTOMER';
--- Revoke administrative access:
-UPDATE customers SET role = 'CUSTOMER' WHERE id = 'CUSTOMER_UUID' AND role = 'ADMIN';
-```
-
-### Administrative transaction reversal
-
-`POST /admin/transactions/{id}/reversal` requires an `ADMIN` bearer token and a
-reason of 1–255 characters (not blank). The administrator may reverse a transaction
-between other customers' accounts; their ordinary account endpoints still enforce
-ownership. The request never accepts a partial amount.
-
-```http
-POST /admin/transactions/TRANSACTION_UUID/reversal
-Authorization: Bearer ADMIN_TOKEN
-Content-Type: application/json
-
-{"reason": "Duplicate payment confirmed by support"}
-```
-
-A successful request returns `201` with the reversal's `id`, `originalTransactionId`,
-`type`, `originAccountId`, `destinationAccountId`, `amount`, `adminId`, `reason` and
-`createdAt`. The reason is stored with surrounding whitespace removed. The original
-transaction is preserved, and a new full-amount financial entry is created:
-
-| Original | Reversal |
+| Recurso | Endereço padrão |
 |---|---|
-| `DEPOSIT` | `WITHDRAW` from the same account |
-| `WITHDRAW` | `DEPOSIT` into the same account |
-| `TRANSFER` A → B | `TRANSFER` B → A |
+| API | http://localhost:8080 |
+| Swagger UI | http://localhost:8080/swagger-ui/index.html |
+| OpenAPI | http://localhost:8080/v3/api-docs |
+| Saúde da aplicação | http://localhost:8080/actuator/health |
 
-All involved accounts must be `ACTIVE`. The debited account must have enough funds,
-and credit must not exceed `9999999999999.99`. Blocked/closed accounts, insufficient
-funds, overflow, a previously reversed transaction or an attempt to reverse a
-reversal return `409`. Invalid UUID/reason returns `400`, no authentication `401`,
-a non-admin `403`, and a missing original transaction `404`.
+A API fica acessível apenas na máquina local; o PostgreSQL não publica uma porta no host. Altere `API_PORT` no `.env` se a porta 8080 estiver ocupada.
 
-The original transaction UUID is the deduplication identity: only one reversal
-can be committed for it, independent of the administrator or reason. The endpoint
-does not use `Idempotency-Key`; retries after success return `409`. If the original
-response is lost, the account owner's statement exposes the reversal link. A failed
-attempt rolls back and can be retried after correcting its cause.
+```powershell
+.\scripts\Test-Compose.ps1
+docker compose logs --tail=100 api
+docker compose down
+```
 
-Migration V5 adds the original link, administrator UUID, reason, foreign keys and
-a unique constraint on the original transaction. The original row is locked before
-account locks, which follow the same UUID ordering used by ordinary transfers.
-Balances, the inverse entry and audit data share one database transaction. Audit
-foreign keys also prevent deleting a referenced administrator or original record.
+O script executa um fluxo HTTP e cria dados de exemplo. O volume do banco permanece após `docker compose down`; adicionar `--volumes` remove os dados. O `.env` é ignorado pelo Git. Configurações e detalhes de persistência estão no [guia de Docker](docs/docker.md).
 
-Statements add two nullable fields: `originalTransactionId` on the reversal, and
-`reversalTransactionId` on the original. Reversal types follow the table above, so
-existing type filters still apply. The administrator UUID and internal reason are
-not added to the public statement. Original idempotency records remain intact:
-replaying a reversed operation's original key returns its original snapshot without
-moving money again. Read the account and statement endpoints for current state.
+### Executar sem Docker
 
-Validation includes PostgreSQL tests for all three operations, duplicate and
-simultaneous reversals, competing withdrawals, blocked/closed accounts, insufficient
-funds, overflow, authorization and rollback at commit. The real HTTP suite also
-exercises this endpoint and checks both statement links.
+Requisitos: JDK 17 e PostgreSQL com o banco `banking_db` criado. Configure as variáveis no ambiente do processo:
 
-### Create Customer
+```powershell
+$env:DATABASE_URL = 'jdbc:postgresql://localhost:5432/banking_db'
+$env:DATABASE_USERNAME = 'postgres'
+$env:DATABASE_PASSWORD = 'SUA_SENHA_DO_BANCO'
+$env:JWT_SECRET = 'SUBSTITUA_POR_UM_SEGREDO_ALEATORIO_DE_32_OU_MAIS_CARACTERES'
+.\mvnw.cmd spring-boot:run
+```
 
-Registration and profile updates validate email length (maximum 150 characters),
-phone length (maximum 20 characters) and a birth date strictly before today.
-Invalid values return `400` before persistence. These rules also apply when updating
-existing profiles. Missing bodies, malformed JSON and incompatible field values
-return the standard error envelope (`timestamp`, `status`, `error`, `message`, `path`),
-without exposing parser internals or echoing request data.
+No Linux/macOS, use `export` para as variáveis e `./mvnw spring-boot:run`. O Maven Wrapper dispensa instalação separada do Maven. O Spring Boot não lê o `.env` automaticamente nessa forma de execução.
 
-**POST** `/customers`
+Variáveis opcionais: `SERVER_PORT` (padrão `8080`), `JWT_EXPIRATION` em milissegundos (padrão `86400000`) e `SHOW_SQL` (padrão `false`). O Flyway aplica as migrations na inicialização.
 
-### Example Request
+## Autenticação e acesso
+
+1. Cadastre um cliente em `POST /customers`.
+2. Envie e-mail e senha para `POST /auth/login`.
+3. Use o token recebido no cabeçalho `Authorization: Bearer <token>`.
+
+Exemplo de cadastro:
 
 ```json
 {
-  "fullName": "John Doe",
+  "fullName": "Maria Silva",
   "cpf": "12345678901",
-  "email": "john.doe@email.com",
-  "password": "12345678",
+  "email": "maria@example.com",
+  "password": "senha-de-exemplo",
   "phone": "81999999999",
   "birthDate": "2000-01-01"
 }
 ```
 
-### Example Response
+O token identifica o UUID do cliente, que não muda ao alterar o e-mail. Cada cliente acessa apenas seus dados e contas; transferências podem ter outra pessoa como destinatária. Depósitos simulam uma operação do titular, não uma integração com pagamentos externos.
 
-```json
-{
-  "id": "UUID",
-  "fullName": "John Doe",
-  "cpf": "12345678901",
-  "email": "john.doe@email.com",
-  "phone": "81999999999",
-  "birthDate": "2000-01-01",
-  "createdAt": "2026-07-15T12:24:43"
-}
+Cadastros recebem o papel `CUSTOMER`. O papel `ADMIN` permite estornos, mas não elimina as verificações de propriedade nos endpoints comuns. As permissões são consultadas no banco a cada requisição. Não existe administrador padrão nem promoção pública de usuários.
+
+Um operador autorizado pode promover ou revogar um cliente existente pelo banco:
+
+```sql
+UPDATE customers SET role = 'ADMIN' WHERE id = 'UUID_DO_CLIENTE' AND role = 'CUSTOMER';
+UPDATE customers SET role = 'CUSTOMER' WHERE id = 'UUID_DO_CLIENTE' AND role = 'ADMIN';
 ```
 
----
+## Endpoints
 
-## 🗺️ Roadmap
+Os contratos completos de entrada e saída estão no Swagger UI.
 
-- [x] Customer registration
-- [x] Bean Validation
-- [x] Global Exception Handler
-- [x] Customer CRUD
-- [x] Banking Accounts
-- [x] Transactions
-- [x] Swagger / OpenAPI
-- [x] Password Encryption (BCrypt)
-- [x] JWT Authentication with customer UUID and ownership checks
-- [x] Unit Tests and HTTP ownership/security tests
-- [x] Docker
-- [x] Docker Compose
+| Método | Rota | Finalidade |
+|---|---|---|
+| POST | `/customers` | Cadastrar cliente |
+| POST | `/auth/login` | Obter token JWT |
+| GET | `/auth/me` | Consultar identidade e papel atuais |
+| GET | `/customers/{id}` | Consultar o próprio cadastro |
+| PUT | `/customers/{id}` | Atualizar o próprio perfil |
+| DELETE | `/customers/{id}` | Excluir cliente sem registros vinculados |
+| POST | `/accounts` | Criar conta para o próprio `customerId` |
+| GET | `/accounts` | Listar as próprias contas |
+| GET | `/accounts/{id}` | Consultar conta |
+| PATCH | `/accounts/{id}/block` | Bloquear conta |
+| PATCH | `/accounts/{id}/unblock` | Desbloquear conta |
+| PATCH | `/accounts/{id}/close` | Encerrar conta |
+| POST | `/accounts/{id}/deposit` | Depositar |
+| POST | `/accounts/{id}/withdraw` | Sacar |
+| POST | `/accounts/transfer` | Transferir |
+| GET | `/accounts/{id}/transactions` | Consultar extrato |
+| POST | `/admin/transactions/{id}/reversal` | Estornar transação como administrador |
 
----
+`GET /customers` não disponibiliza listagem: retorna `403` para usuários autenticados. Bloqueio, desbloqueio e encerramento não exigem corpo na requisição.
 
-## 👨‍💻 Author
+## Regras de uso
 
-Developed by **Ítalo André**
+### Clientes e validação
 
-Backend Developer | Java | Spring Boot | PostgreSQL
+- CPF exige 11 dígitos; CPF e e-mail são únicos. Duplicidades, inclusive concorrentes, retornam `409`.
+- Nome aceita até 120 caracteres, e-mail até 150 e telefone até 20.
+- Nome, e-mail, telefone e motivo de estorno rejeitam o caractere nulo (`U+0000`). Unicode válido permanece sujeito às regras de cada campo.
+- Datas aceitam anos de `0001` a `9999`. Nascimento deve ser anterior ao dia atual; a mesma regra vale na atualização.
+- Novas senhas exigem pelo menos 8 pontos de código Unicode e no máximo 72 bytes UTF-8. Não são cortadas ou normalizadas. O login preserva senhas curtas já existentes e rejeita entradas acima do limite de bytes.
+- Atualizar o perfil não altera CPF, senha ou papel. Entre atualizações concorrentes dos campos de perfil, prevalece a última gravação.
+- Excluir um cliente com registros vinculados retorna `409`. Exclusão concorrente durante a criação de conta retorna `404` quando a exclusão vence a inserção.
+
+### Contas e movimentações
+
+Somente contas `ACTIVE` podem movimentar valores, inclusive receber transferências. Uma conta `BLOCKED` pode ser desbloqueada; o encerramento exige conta ativa com saldo zero e resulta em `CLOSED`, sem possibilidade de reabertura. Consultas e histórico continuam disponíveis nos três estados.
+
+Valores devem ser positivos, com até 13 dígitos inteiros e 2 casas decimais, limitados a `9999999999999.99`. Entradas com casas decimais excedentes são rejeitadas, não arredondadas. Saldo insuficiente ou crédito acima do limite retorna `409`.
+
+Saldo e histórico são gravados na mesma transação: uma falha desfaz a operação inteira. Bloqueios no banco coordenam movimentações e mudanças de estado. A criação de conta tenta alocar um número até dez vezes em caso de colisão; ao esgotar as tentativas, retorna `409`.
+
+### Extrato
+
+Exemplo:
+
+```http
+GET /accounts/UUID_DA_CONTA/transactions?page=0&size=20&startDate=2026-10-01&endDate=2026-10-31&type=TRANSFER
+Authorization: Bearer TOKEN
+```
+
+| Parâmetro | Padrão | Regra |
+|---|---|---|
+| `page` | `0` | Não negativo; `page * size` limitado a `2147483647` |
+| `size` | `20` | De 1 a 100 |
+| `startDate` | Sem filtro | Data inicial inclusiva |
+| `endDate` | Sem filtro | Data final inclusiva, não anterior à inicial |
+| `type` | Todos | `DEPOSIT`, `WITHDRAW` ou `TRANSFER` |
+
+Os filtros são combináveis. As datas usam o calendário do timestamp armazenado, sem conversão de fuso. O extrato inclui transferências enviadas e recebidas, ordenadas por data e UUID decrescentes.
+
+A resposta contém `content`, `page`, `size`, `totalElements` e `totalPages`. Páginas posteriores à última retornam `content` vazio. Novas movimentações podem deslocar os itens entre consultas de páginas diferentes.
+
+### Idempotência
+
+Depósitos, saques e transferências aceitam o cabeçalho opcional `Idempotency-Key`. Use uma chave nova por operação e repita a mesma chave apenas para tentar novamente a mesma requisição.
+
+- A chave pertence ao cliente autenticado e aceita de 1 a 128 letras ASCII, dígitos ou os caracteres `.`, `_`, `:` e `-`.
+- Repetir operação, contas e valor retorna `200` com a resposta original, sem nova movimentação. Valores como `25`, `25.0` e `25.00` são equivalentes.
+- Reutilizar a chave com outros dados retorna `409`. Sem o cabeçalho, cada requisição bem-sucedida executa uma operação independente.
+- Autenticação e propriedade são verificadas antes de recuperar a resposta. Operações que falham não têm resultado armazenado.
+- Registros persistem após reinicializações e não expiram automaticamente. A resposta recuperada pode mostrar saldo ou estado antigos; consulte a conta para obter o estado atual.
+
+### Estorno administrativo
+
+O administrador envia `POST /admin/transactions/{id}/reversal` com um motivo não vazio de até 255 caracteres:
+
+```json
+{"reason": "Pagamento duplicado confirmado pelo suporte"}
+```
+
+O estorno é integral: cria uma movimentação inversa, preserva a original e registra administrador e motivo. As contas precisam estar ativas, com saldo suficiente para o débito e espaço para o crédito. Sucesso retorna `201`.
+
+Cada transação permite apenas um estorno. Repetir um estorno ou tentar estornar outro estorno retorna `409`; este endpoint não usa `Idempotency-Key`. O extrato expõe os vínculos `originalTransactionId` e `reversalTransactionId`, sem divulgar o motivo interno ou o administrador. Repetir a chave idempotente da operação original não movimenta dinheiro novamente, mesmo após estorno.
+
+### Respostas de erro
+
+| Código | Significado |
+|---|---|
+| `400` | Entrada, JSON ou parâmetro inválido |
+| `401` | Autenticação ausente ou inválida |
+| `403` | Acesso não permitido |
+| `404` | Recurso não encontrado |
+| `409` | Conflito de cadastro, saldo, estado ou operação |
+
+Os erros tratados pela API seguem o formato `timestamp`, `status`, `error`, `message` e `path`.
+
+## Testes e integração contínua
+
+Use um PostgreSQL separado para testes. Crie o banco uma vez:
+
+```sql
+CREATE DATABASE banking_api_test;
+```
+
+Por padrão, o perfil `test` usa `localhost:5432/banking_api_test`, usuário `postgres` e senha `admin`. Para substituir esses valores, configure `TEST_DATABASE_URL`, `TEST_DATABASE_USERNAME` e `TEST_DATABASE_PASSWORD`. O perfil fornece seu próprio segredo JWT.
+
+```powershell
+.\mvnw.cmd clean verify
+```
+
+No Linux/macOS, use `./mvnw clean verify`. As suítes usam schemas de teste e limpam seus dados; não aponte essas variáveis para um banco de produção nem execute as suítes de banco em paralelo no mesmo ambiente.
+
+A última validação da mudança de limites de entrada passou com **274 testes**, incluindo testes unitários, integração com PostgreSQL e HTTP real. A cobertura inclui autorização, concorrência, rollback, idempotência e estornos. Isso não substitui teste de carga ou avaliação de segurança em produção.
+
+O GitHub Actions executa dois checks: `build` e `Docker Compose validation`. O segundo constrói a imagem, aguarda a saúde dos serviços e executa o teste HTTP do Compose. A `develop` exige PR, ambos os checks aprovados, branch atualizada e conversas resolvidas; force push e exclusão estão bloqueados, inclusive para administradores.
+
+## Documentação complementar
+
+- [Docker: configuração, persistência e diagnóstico](docs/docker.md)
+- [CI: execução dos jobs e logs de falha](docs/ci.md)
+- [Testes HTTP: execução e cobertura](docs/http-validation.md)
+
+Os guias complementares estão em inglês e incluem registros de validações anteriores.
+
+## Autor
+
+Desenvolvido por **Ítalo André**. Projeto de portfólio em desenvolvimento backend com Java, Spring Boot e PostgreSQL.
