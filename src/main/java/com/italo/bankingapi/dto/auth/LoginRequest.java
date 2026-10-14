@@ -15,6 +15,7 @@ public class LoginRequest {
     private String email;
 
     @NotBlank(message = "Password is required.")
+    @com.italo.bankingapi.validation.PasswordLength
     private String password;
 
 }

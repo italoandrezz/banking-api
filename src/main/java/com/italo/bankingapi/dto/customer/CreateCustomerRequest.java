@@ -26,6 +26,8 @@ public class CreateCustomerRequest {
     private String email;
 
     @NotBlank(message = "Password is required.")
+    @com.italo.bankingapi.validation.PasswordLength(minCharacters = 8,
+            message = "Password must have at least 8 Unicode characters and at most 72 UTF-8 bytes.")
     private String password;
 
     @NotBlank(message = "Phone is required.")

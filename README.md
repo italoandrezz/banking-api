@@ -402,6 +402,26 @@ Content-Type: application/json
   Records have no foreign keys to mutable customer/account records so retention
   is independent; deleting replay records would allow their keys to execute again.
 
+### Password validation
+
+New customers must provide a nonblank password with at least 8 Unicode code points
+and at most 72 bytes when encoded as UTF-8. The maximum follows the BCrypt input
+limit: 72 ASCII characters, 36 two-byte accented characters, or 18 four-byte emoji
+can fit. Combining characters count separately; passwords are not normalized,
+trimmed, or truncated. No mandatory character-category rules are imposed.
+
+Invalid registration passwords return `400` with the standard error envelope
+before hashing or persistence. Login also rejects passwords above 72 UTF-8 bytes
+with `400`, regardless of whether the e-mail exists. The new minimum applies only
+to registration: existing customers with shorter passwords can still log in.
+Incorrect credentials within the accepted login limits continue to return `401`.
+No existing password hashes are rewritten.
+
+`PasswordValidationHttpTest` verifies ASCII and multibyte boundaries, invalid
+registration without persistence, authentication with accepted passwords, and
+compatibility with an existing short password using real HTTP and PostgreSQL in
+the isolated `banking_api_password_tests` schema.
+
 ### Concurrent customer writes
 
 `PUT /customers/{id}` writes only the profile fields (`fullName`, `email`,
