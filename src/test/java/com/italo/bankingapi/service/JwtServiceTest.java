@@ -1,13 +1,14 @@
 package com.italo.bankingapi.service;
 
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,9 +25,7 @@ class JwtServiceTest {
 
     @BeforeEach
     void setUp() {
-        jwtService = new JwtService();
-        ReflectionTestUtils.setField(jwtService, "secret", SECRET);
-        ReflectionTestUtils.setField(jwtService, "expirationTime", 86_400_000L);
+        jwtService = new JwtService(SECRET, 86_400_000L);
     }
 
     @Test
@@ -45,6 +44,7 @@ class JwtServiceTest {
                 .verifyWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
                 .build().parseSignedClaims(token).getPayload();
         assertEquals(customerId.toString(), claims.getSubject());
+        assertEquals(86_400_000L, claims.getExpiration().getTime() - claims.getIssuedAt().getTime());
     }
 
     @Test
@@ -98,5 +98,26 @@ class JwtServiceTest {
 
         // Assert
         assertNotNull(exception);
+    }
+
+    @Test
+    void shouldRejectExpiredToken() {
+        UUID customerId = UUID.randomUUID();
+        String token = Jwts.builder().subject(customerId.toString())
+                .expiration(new Date(System.currentTimeMillis() - 60_000))
+                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertThrows(ExpiredJwtException.class, () -> jwtService.isTokenValid(token, customerId));
+    }
+
+    @Test
+    void shouldRejectTokenWithoutExpiration() {
+        UUID customerId = UUID.randomUUID();
+        String token = Jwts.builder().subject(customerId.toString())
+                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertFalse(jwtService.isTokenValid(token, customerId));
     }
 }
