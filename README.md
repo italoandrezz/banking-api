@@ -220,7 +220,7 @@ No Linux/macOS, use `./mvnw clean verify`. As suítes usam schemas de teste e li
 
 A validação das atualizações de dependências e configuração JWT passou com **299 testes**, incluindo testes unitários, integração com PostgreSQL e HTTP real. A cobertura inclui autorização, concorrência, rollback, idempotência e estornos. Isso não substitui teste de carga ou avaliação de segurança em produção.
 
-O GitHub Actions executa dois checks: `build` e `Docker Compose validation`. O segundo constrói a imagem, aguarda a saúde dos serviços e executa o teste HTTP do Compose. A `develop` exige PR, ambos os checks aprovados, branch atualizada e conversas resolvidas; force push e exclusão estão bloqueados, inclusive para administradores.
+O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs para `develop` e `main`. Além dos testes Java, o pipeline executa 24 testes Node.js, o smoke HTTP do Compose e a collection Postman (185 requisições e 1047 assertions), reutilizando a imagem em um banco temporário separado. Publica apenas relatórios JUnit e Markdown sanitizados. A execução dessa integração no GitHub ainda precisa ser confirmada após a publicação do PR; veja o [guia de CI](docs/ci.md).
 
 ### Postman no VS Code
 
@@ -235,7 +235,7 @@ Resultados em `target/postman/latest/summary.md` e `report.html`. O ambiente tem
 ## Documentação complementar
 
 - [Docker: configuração, persistência e diagnóstico](docs/docker.md)
-- [CI: execução dos jobs e logs de falha](docs/ci.md)
+- [CI: execução dos jobs e relatórios sanitizados](docs/ci.md)
 - [Testes HTTP: execução e cobertura](docs/http-validation.md)
 
 Os guias incluem registros de validações anteriores.

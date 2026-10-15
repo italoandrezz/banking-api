@@ -122,3 +122,20 @@ node scripts/postman/run.mjs
 Resultado validado: 185 requisições, 1047 assertions, zero reprovações e limpeza confirmada. O teste de falha deliberada confirmou a limpeza e a representação da falha em JUnit e Markdown. Os 22 testes da infraestrutura verificam inspeção recursiva, exceção do token de login, ausência de falsos positivos, sanitização, execução incompleta, relatórios JUnit, scripts, isolamento, tarefas e sincronização da collection.
 
 Na primeira execução, uma assertion esperava apenas `application/json` para o Actuator. A resposta válida usa subtipo JSON do Spring Boot; a assertion foi corrigida para aceitar `application/*+json`. A revisão posterior substituiu a regex de campos sensíveis pela inspeção recursiva e corrigiu a representação de falhas globais no JUnit. Nenhuma regra de negócio foi alterada. A validação Java com `mvnw.cmd -B -ntp verify` executou 299 testes com PostgreSQL descartável, sem falhas, erros ou testes ignorados.
+
+## Integração no GitHub Actions
+
+O check `Docker Compose validation` executa os 24 testes Node.js (22 existentes e dois novos de relatórios), mantém o smoke do Compose principal e executa a collection completa em um novo PostgreSQL temporário. O `build` continua executando os 299 testes Java.
+
+O runner pode reutilizar uma imagem já construída com:
+
+```powershell
+$imageId = docker image inspect NOME_DA_IMAGEM_LOCAL --format '{{.Id}}'
+node scripts/postman/run.mjs --image $imageId
+```
+
+Somente IDs locais `sha256:...` são aceitos; tags, registros remotos e URLs de API não são aceitos. A imagem emprestada permanece disponível após o teste; a imagem construída pelo próprio runner é removida na limpeza. Sem `--image`, as tasks existentes do VS Code continuam construindo a imagem automaticamente. A normalização de finais de linha no gerador mantém a collection consistente entre Windows e Linux.
+
+O CI instala Postman CLI 1.74.0 com versão e SHA-256 fixados. Publica somente JUnit e Markdown sanitizados, incluindo o resultado das etapas de infraestrutura. Ambientes privados, relatórios nativos e logs brutos não são artifacts. Consulte [CI](ci.md) para limites de cancelamento, política de atualização e lista dos relatórios.
+
+A validação real dessa integração em Ubuntu no GitHub Actions depende da publicação autorizada do PR. Testes locais e instalação em container Linux não substituem essa confirmação.

@@ -7,9 +7,17 @@ import { fileURLToPath } from 'node:url';
 import { sanitizedReport, junitReport } from './report.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-const args = new Set(process.argv.slice(2));
+const inputArgs = process.argv.slice(2);
+const imageIndex = inputArgs.indexOf('--image');
+let borrowedImage;
+if (imageIndex >= 0) {
+  borrowedImage = inputArgs[imageIndex + 1];
+  if (!/^sha256:[a-f0-9]{64}$/.test(borrowedImage || '')) throw new Error('Expected a local immutable image ID');
+  inputArgs.splice(imageIndex, 2);
+}
+const args = new Set(inputArgs);
 if ([...args].some(a => !['--interactive', '--simulate-failure'].includes(a))) {
-  throw new Error('Only --interactive and --simulate-failure are accepted; arbitrary API targets are forbidden.');
+  throw new Error('Accepted options: --image <local ID>, --interactive, --simulate-failure; arbitrary API targets are forbidden.');
 }
 const project = 'banking-postman-' + randomBytes(8).toString('hex');
 const outputDir = path.join(root, 'target/postman', project);
@@ -19,6 +27,7 @@ await writeFile(envFile, '');
 const dbPassword = randomBytes(32).toString('hex');
 const jwtSecret = randomBytes(32).toString('hex');
 const testEnv = { ...process.env, POSTMAN_TEST_DB_PASSWORD: dbPassword, POSTMAN_TEST_JWT_SECRET: jwtSecret };
+testEnv.POSTMAN_TEST_API_IMAGE = borrowedImage || `${project}-api`;
 // Neither a cloud API key nor a proxy is needed for a loopback-only run.
 for (const key of Object.keys(testEnv)) {
   if (/^(POSTMAN_API_KEY|POSTMAN_ACCESS_TOKEN|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY)$/i.test(key)) delete testEnv[key];
@@ -29,7 +38,6 @@ const composeArgs = ['compose', '--project-name', project, '--env-file', envFile
 let child;
 let interrupted = false;
 let cleaning = false;
-let stackAttempted = false;
 let stage = 'prerequisites';
 let exitCode = 1;
 let summary = { project, timestamp: new Date().toISOString(), success: false, requests: 0, assertions: 0, failedAssertions: 0, executions: [], endpoints: [], cleanup: false };
@@ -111,12 +119,17 @@ try {
   if (collection.info._postman_id) throw new Error('Use an unlinked local collection');
   console.log(`Postman CLI ${cli.version}; isolated Docker project ${project}.`);
   stage = 'build';
-  console.log('Building test API image...');
-  await compose(['build'], { timeout: 900_000 });
+  if (borrowedImage) {
+    const inspected = await command('docker', ['image', 'inspect', borrowedImage, '--format', '{{.Id}}']);
+    if (inspected.stdout.trim() !== borrowedImage) throw new Error('Local image mismatch');
+    console.log('Reusing verified local API image.');
+  } else {
+    console.log('Building test API image...');
+    await compose(['build'], { timeout: 900_000 });
+  }
   stage = 'startup';
-  stackAttempted = true;
   console.log('Starting disposable PostgreSQL and API...');
-  await compose(['up', '-d', '--wait', '--wait-timeout', '180'], { timeout: 210_000 });
+  await compose(['up', '-d', '--no-build', '--wait', '--wait-timeout', '180'], { timeout: 210_000 });
   const serviceJson = (await compose(['ps', '--format', 'json'])).stdout.trim();
   const services = serviceJson.startsWith('[') ? JSON.parse(serviceJson)
     : serviceJson.split('\n').filter(Boolean).map(line => JSON.parse(line));
@@ -176,12 +189,16 @@ try {
   console.log('Removing this run\'s temporary Docker resources...');
   try {
     // Explicit file and random project name prevent touching the development stack.
-    await compose(['down', '--volumes', '--remove-orphans', '--rmi', 'local'], { timeout: 120_000 });
+    await compose(['down', '--volumes', '--remove-orphans'], { timeout: 120_000 });
+    if (!borrowedImage) {
+      const owned = await command('docker', ['image', 'ls', '-q', `${project}-api`]);
+      if (owned.stdout.trim()) await command('docker', ['image', 'rm', `${project}-api`]);
+    }
     const remaining = await command('docker', ['ps', '-aq', '--filter', `label=com.docker.compose.project=${project}`]);
     const networks = await command('docker', ['network', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`]);
     const volumes = await command('docker', ['volume', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`]);
     summary.cleanup = !remaining.stdout.trim() && !networks.stdout.trim() && !volumes.stdout.trim();
-  } catch { summary.cleanup = !stackAttempted; }
+  } catch { summary.cleanup = false; }
   if (!summary.cleanup) { summary.success = false; exitCode = 1; console.error(`Cleanup could not be confirmed for ${project}.`); }
   // Only remove the exact private directory allocated by mkdtemp above.
   if (path.dirname(path.resolve(privateDir)) !== path.resolve(tmpdir()) || !path.basename(privateDir).startsWith('banking-postman-private-')) throw new Error('Unsafe temporary path');

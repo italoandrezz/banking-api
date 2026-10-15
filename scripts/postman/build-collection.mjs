@@ -31,7 +31,7 @@ function request(name, method, path, status, { auth = 'tokenA', body, tests = []
         check('Error path matches request', 'data && data.path === pm.variables.replaceIn(pm.request.url.getPath())')
       ] : []),
       ...(path !== '/v3/api-docs' ? [
-        hasSensitiveFields.toString(),
+        hasSensitiveFields.toString().replace(/\r\n/g, '\n'),
         check('No sensitive JSON properties in response', `!hasSensitiveFields(data, ${method === 'POST' && path === '/auth/login' && status === 200})`)
       ] : [])
     ]),
