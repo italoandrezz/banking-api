@@ -33,4 +33,9 @@ build/
 !**/src/test/**/build/
 
 ### VS Code ###
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+
+# Local Postman data and native reporter output must never be committed.
+postman/*.local.json
+postman-cli-reports/

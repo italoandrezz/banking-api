@@ -222,13 +222,23 @@ A validação das atualizações de dependências e configuração JWT passou co
 
 O GitHub Actions executa dois checks: `build` e `Docker Compose validation`. O segundo constrói a imagem, aguarda a saúde dos serviços e executa o teste HTTP do Compose. A `develop` exige PR, ambos os checks aprovados, branch atualizada e conversas resolvidas; force push e exclusão estão bloqueados, inclusive para administradores.
 
+### Postman no VS Code
+
+A task **Postman: testar API isolada** executa 185 requisições e 1047 assertions nos 18 endpoints, com API e PostgreSQL descartáveis. Requer Docker, Node.js e Postman CLI; não utiliza o banco de desenvolvimento.
+
+```powershell
+.\scripts\Test-Postman.ps1
+```
+
+Resultados em `target/postman/latest/summary.md` e `report.html`. O ambiente temporário é limpo automaticamente. Consulte o [guia Postman](docs/postman-testing.md) para instalação, cobertura e inspeção na extensão do VS Code.
+
 ## Documentação complementar
 
 - [Docker: configuração, persistência e diagnóstico](docs/docker.md)
 - [CI: execução dos jobs e logs de falha](docs/ci.md)
 - [Testes HTTP: execução e cobertura](docs/http-validation.md)
 
-Os guias complementares estão em inglês e incluem registros de validações anteriores.
+Os guias incluem registros de validações anteriores.
 
 ## Autor
 
