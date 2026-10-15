@@ -85,10 +85,15 @@ jobs:
         shell: bash
         run: |
           db_password=$(openssl rand -hex 32)
+          admin_password=$(openssl rand -hex 32)
+          migrator_password=$(openssl rand -hex 32)
           jwt_secret=$(openssl rand -hex 32)
           echo "::add-mask::$db_password"
+          echo "::add-mask::$admin_password"
+          echo "::add-mask::$migrator_password"
           echo "::add-mask::$jwt_secret"
           printf 'DB_PASSWORD=%s\nJWT_SECRET=%s\n' "$db_password" "$jwt_secret" >> "$GITHUB_ENV"
+          printf 'DB_ADMIN_PASSWORD=%s\nFLYWAY_PASSWORD=%s\n' "$admin_password" "$migrator_password" >> "$GITHUB_ENV"
 
       - name: Validate Compose configuration
         id: config
