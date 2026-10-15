@@ -1,0 +1,34 @@
+# Standalone test stack: never combine this file with compose.yaml.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: banking_postman_test
+      POSTGRES_USER: postman_test
+      POSTGRES_PASSWORD: ${POSTMAN_TEST_DB_PASSWORD:?Use scripts/Test-Postman.ps1}
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postman_test -d banking_postman_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    labels:
+      banking.test-suite: postman
+  api:
+    build: .
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/banking_postman_test
+      DATABASE_USERNAME: postman_test
+      DATABASE_PASSWORD: ${POSTMAN_TEST_DB_PASSWORD:?Use scripts/Test-Postman.ps1}
+      JWT_SECRET: ${POSTMAN_TEST_JWT_SECRET:?Use scripts/Test-Postman.ps1}
+      JWT_EXPIRATION: '86400000'
+      SERVER_PORT: '8080'
+      SHOW_SQL: 'false'
+    ports:
+      - '127.0.0.1::8080'
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      banking.test-suite: postman
