@@ -16,6 +16,8 @@ services:
     labels:
       banking.test-suite: postman
   api:
+    image: ${POSTMAN_TEST_API_IMAGE:-${COMPOSE_PROJECT_NAME}-api}
+    pull_policy: never
     build: .
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/banking_postman_test

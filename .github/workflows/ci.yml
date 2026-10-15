@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+      - main
 
   push:
     branches:
@@ -55,7 +56,7 @@ jobs:
   compose:
     name: Docker Compose validation
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       COMPOSE_PROJECT_NAME: banking-ci
       DB_NAME: banking_ci
@@ -66,10 +67,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+
+      - name: Test Postman infrastructure
+        id: node
+        run: node --test scripts/postman/*.test.mjs
+
+      - name: Install verified Postman CLI
+        id: install
+        run: bash scripts/ci/install-postman.sh
+
       - name: Generate temporary environment secrets
+        id: environment
         shell: bash
         run: |
-          mkdir -p artifacts
           db_password=$(openssl rand -hex 32)
           jwt_secret=$(openssl rand -hex 32)
           echo "::add-mask::$db_password"
@@ -77,48 +91,69 @@ jobs:
           printf 'DB_PASSWORD=%s\nJWT_SECRET=%s\n' "$db_password" "$jwt_secret" >> "$GITHUB_ENV"
 
       - name: Validate Compose configuration
+        id: config
         run: docker compose config --quiet
 
       - name: Build API image
+        id: image
         timeout-minutes: 15
         shell: bash
-        run: docker compose --progress plain build 2>&1 | tee artifacts/image-build.log
+        run: |
+          docker compose --progress plain build > "$RUNNER_TEMP/image-build.log" 2>&1
+          image_id=$(docker image inspect "$COMPOSE_PROJECT_NAME-api" --format '{{.Id}}')
+          printf 'API_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
 
       - name: Start healthy services
+        id: startup
         timeout-minutes: 5
         shell: bash
-        run: docker compose up -d --wait --wait-timeout 180 2>&1 | tee artifacts/startup.log
+        run: docker compose up -d --no-build --wait --wait-timeout 180 > "$RUNNER_TEMP/startup.log" 2>&1
 
       - name: Test real HTTP financial flow
+        id: smoke
         timeout-minutes: 2
         shell: pwsh
         run: |
           try {
-            ./scripts/Test-Compose.ps1 -BaseUrl http://localhost:18080 | Tee-Object -FilePath artifacts/http-smoke.log
+            ./scripts/Test-Compose.ps1 -BaseUrl http://localhost:18080 *> $null
+            Write-Output 'Compose HTTP smoke passed.'
           } catch {
-            $_ | Out-String | Add-Content artifacts/http-smoke.log
-            throw
+            Write-Error 'Compose HTTP smoke failed; native output withheld.'
+            exit 1
           }
 
-      - name: Collect service diagnostics
-        if: always()
+      - name: Remove test containers and volumes
+        id: cleanup
+        if: always() && steps.environment.outcome == 'success'
+        timeout-minutes: 3
         shell: bash
         run: |
-          mkdir -p artifacts
-          docker compose ps --all > artifacts/compose-status.log 2>&1 || true
-          docker compose logs --no-color --timestamps > artifacts/compose-services.log 2>&1 || true
+          docker compose down --volumes --remove-orphans > "$RUNNER_TEMP/cleanup.log" 2>&1
+          containers=$(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")
+          networks=$(docker network ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")
+          volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")
+          test -z "$containers$networks$volumes"
 
-      - name: Remove test containers and volumes
+      - name: Run isolated Postman collection
+        id: postman
+        timeout-minutes: 12
+        run: node scripts/postman/run.mjs --image "$API_IMAGE_ID"
+
+      - name: Generate sanitized pipeline reports
         if: always()
-        timeout-minutes: 2
-        shell: bash
-        run: docker compose down --volumes --remove-orphans 2>&1 | tee artifacts/cleanup.log
+        env:
+          CI_STEP_RESULTS: ${{ toJSON(steps) }}
+        run: node scripts/ci/report.mjs
 
-      - name: Upload failure diagnostics
-        if: failure()
+      - name: Upload sanitized reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: compose-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/*.log
+          name: api-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/ci/junit.xml
+            target/ci/summary.md
+            target/postman/latest/junit.xml
+            target/postman/latest/summary.md
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
