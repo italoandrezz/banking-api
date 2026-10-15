@@ -37,7 +37,7 @@ Código de saída zero significa suíte aprovada e limpeza confirmada. Qualquer 
 
 ## Isolamento e limpeza
 
-`compose.postman.yaml` é independente do Compose de desenvolvimento. Cada execução recebe projeto aleatório `banking-postman-...`, rede própria, porta aleatória em `127.0.0.1` e PostgreSQL em `tmpfs`. Não há volumes persistentes, bind mounts ou porta publicada para o banco. O runner verifica essas propriedades antes de preparar os dados e não aceita uma URL externa como argumento.
+`compose.postman.yaml` é independente do Compose de desenvolvimento. Cada execução recebe projeto aleatório `banking-postman-...`, rede própria, porta aleatória em `127.0.0.1` e PostgreSQL em `tmpfs`. Não há volumes de dados persistentes nem porta publicada para o banco. O único bind é o código de provisionamento PostgreSQL, somente para leitura. O runner verifica essas propriedades antes de preparar os dados e não aceita uma URL externa como argumento.
 
 O arquivo `.env` de desenvolvimento não é carregado. Senhas, segredo JWT e usuários de teste são gerados por execução. Um cliente sintético é promovido a ADMIN diretamente no banco isolado para testar estornos; isso não altera a aplicação nem cria um administrador no banco de desenvolvimento. Um JWT expirado, com assinatura válida, é gerado somente para o cenário de rejeição.
 
@@ -125,7 +125,7 @@ Na primeira execução, uma assertion esperava apenas `application/json` para o 
 
 ## Integração no GitHub Actions
 
-O check `Docker Compose validation` executa os 24 testes Node.js (22 existentes e dois novos de relatórios), mantém o smoke do Compose principal e executa a collection completa em um novo PostgreSQL temporário. O `build` continua executando os 299 testes Java.
+O check `Docker Compose validation` executa os 24 testes Node.js, mantém o smoke do Compose principal e executa a collection completa em um novo PostgreSQL temporário. O `build` executa 302 testes Java: os 299 anteriores e três testes de privilégios e upgrade PostgreSQL.
 
 O runner pode reutilizar uma imagem já construída com:
 
@@ -138,4 +138,6 @@ Somente IDs locais `sha256:...` são aceitos; tags, registros remotos e URLs de 
 
 O CI instala Postman CLI 1.74.0 com versão e SHA-256 fixados. Publica somente JUnit e Markdown sanitizados, incluindo o resultado das etapas de infraestrutura. Ambientes privados, relatórios nativos e logs brutos não são artifacts. Consulte [CI](ci.md) para limites de cancelamento, política de atualização e lista dos relatórios.
 
-A validação real dessa integração em Ubuntu no GitHub Actions depende da publicação autorizada do PR. Testes locais e instalação em container Linux não substituem essa confirmação.
+A Fase 1 foi validada em Ubuntu no PR #39. Cada alteração posterior exige confirmação dos checks e artifacts no próprio PR; resultados locais não substituem essa confirmação.
+
+O PostgreSQL descartável utiliza três identidades e senhas aleatórias distintas: `postman_admin` para provisionamento/fixture administrativa, `postman_migrator` para Flyway e `postman_test` para o datasource da API. Antes da collection, uma conexão TCP autenticada como aplicação verifica atributos administrativos, memberships, propriedade, permissões de schema/banco e acesso ao histórico Flyway. Falhas reprovam a execução. O único bind aceito é `/docker-entrypoint-initdb.d`, somente para leitura, no container do banco; os dados continuam em tmpfs. Veja [segurança PostgreSQL](postgresql-security.md).

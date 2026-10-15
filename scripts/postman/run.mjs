@@ -27,6 +27,8 @@ await writeFile(envFile, '');
 const dbPassword = randomBytes(32).toString('hex');
 const jwtSecret = randomBytes(32).toString('hex');
 const testEnv = { ...process.env, POSTMAN_TEST_DB_PASSWORD: dbPassword, POSTMAN_TEST_JWT_SECRET: jwtSecret };
+testEnv.POSTMAN_TEST_ADMIN_PASSWORD = randomBytes(32).toString('hex');
+testEnv.POSTMAN_TEST_MIGRATOR_PASSWORD = randomBytes(32).toString('hex');
 testEnv.POSTMAN_TEST_API_IMAGE = borrowedImage || `${project}-api`;
 // Neither a cloud API key nor a proxy is needed for a loopback-only run.
 for (const key of Object.keys(testEnv)) {
@@ -138,17 +140,35 @@ try {
   const dbId = (await compose(['ps', '-q', 'db'])).stdout.trim();
   const inspection = JSON.parse((await command('docker', ['inspect', apiId, dbId])).stdout);
   if (inspection.some(c => c.Config.Labels['banking.test-suite'] !== 'postman' || c.Config.Labels['com.docker.compose.project'] !== project)) throw new Error('Isolation label verification failed');
-  if (inspection.some(c => c.Mounts.some(m => m.Type === 'volume' || m.Type === 'bind'))) throw new Error('Persistent mounts are forbidden');
+  // The sole permitted bind is the read-only provisioning code, never database data.
+  if (inspection.some(c => c.Mounts.some(m => m.Type === 'volume' || (m.Type === 'bind' &&
+    !(c.Id === dbId && m.Destination === '/docker-entrypoint-initdb.d' && !m.RW))))) throw new Error('Persistent data mounts are forbidden');
   const port = (await compose(['port', 'api', '8080'])).stdout.trim();
   if (!/^127\.0\.0\.1:\d+$/.test(port)) throw new Error('Unexpected API binding');
   const baseUrl = 'http://' + port;
   if (args.has('--simulate-failure')) { stage = 'simulated-failure'; throw new Error('Intentional failure to verify cleanup'); }
+  stage = 'database-privileges';
+  const privilegeResult = await command('docker', ['exec', '-i', '-e', 'PGPASSWORD', dbId,
+    'psql', '-X', '-h', '127.0.0.1', '-U', 'postman_test', '-d', 'banking_postman_test', '-At', '-v', 'ON_ERROR_STOP=1'], {
+    env: { ...testEnv, PGPASSWORD: dbPassword },
+    input: `SELECT current_user = 'postman_test'
+      AND NOT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)
+      AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
+      AND NOT has_database_privilege(current_user, current_database(), 'CREATE,TEMP')
+      AND NOT has_table_privilege(current_user, 'public.flyway_schema_history', 'SELECT,INSERT,UPDATE,DELETE')
+      AND NOT EXISTS (SELECT FROM pg_auth_members WHERE member=pg_roles.oid)
+      AND NOT EXISTS (SELECT FROM pg_class WHERE relnamespace='public'::regnamespace AND relowner=pg_roles.oid)
+      AND has_table_privilege(current_user, 'public.accounts', 'SELECT,INSERT,UPDATE,DELETE')
+      FROM pg_roles WHERE rolname=current_user;\n`
+  });
+  if (privilegeResult.stdout.trim() !== 't') throw new Error('Runtime database privileges are excessive');
+  console.log('PostgreSQL runtime role: restricted privileges verified through authenticated SQL.');
   stage = 'fixtures';
   const adminEmail = `admin-${randomUUID()}@example.test`;
   const adminPassword = randomBytes(24).toString('base64url');
   const admin = await api(baseUrl, 'POST', '/customers', { fullName: 'Postman isolated administrator', cpf: String(randomBytes(5).readUIntBE(0, 5) % 90000000000 + 10000000000), email: adminEmail, password: adminPassword, phone: '81999999999', birthDate: '2000-01-01' });
   if (!/^[a-f0-9-]{36}$/.test(admin.id)) throw new Error('Invalid fixture ID');
-  await command('docker', ['exec', '-i', dbId, 'psql', '-U', 'postman_test', '-d', 'banking_postman_test', '-v', 'ON_ERROR_STOP=1'], {
+  await command('docker', ['exec', '-i', dbId, 'psql', '-U', 'postman_admin', '-d', 'banking_postman_test', '-v', 'ON_ERROR_STOP=1'], {
     input: `UPDATE customers SET role = 'ADMIN' WHERE id = '${admin.id}'::uuid;\n`
   });
   const now = Math.floor(Date.now() / 1000);

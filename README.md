@@ -28,7 +28,7 @@ cd banking-api
 git switch develop
 ```
 
-Copie `.env.example` para `.env` e preencha `DB_PASSWORD` e `JWT_SECRET` com segredos distintos. Use um segredo JWT aleatório com pelo menos 32 caracteres ASCII. No PowerShell:
+Para um banco novo, copie `.env.example` para `.env` e preencha `DB_ADMIN_PASSWORD`, `FLYWAY_PASSWORD`, `DB_PASSWORD` e `JWT_SECRET` com segredos distintos. Use um segredo JWT aleatório com pelo menos 32 caracteres ASCII. Se já houver um volume, siga primeiro o [procedimento de adaptação PostgreSQL](docs/postgresql-security.md), sem apagar ou recriar seus dados. No PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
@@ -59,13 +59,15 @@ Requisitos: JDK 17 e PostgreSQL com o banco `banking_db` criado. Configure as va
 
 ```powershell
 $env:DATABASE_URL = 'jdbc:postgresql://localhost:5432/banking_db'
-$env:DATABASE_USERNAME = 'postgres'
+$env:DATABASE_USERNAME = 'banking_app'
 $env:DATABASE_PASSWORD = 'SUA_SENHA_DO_BANCO'
+$env:FLYWAY_USERNAME = 'banking_migrator'
+$env:FLYWAY_PASSWORD = 'SUA_SENHA_DO_MIGRADOR'
 $env:JWT_SECRET = 'SUBSTITUA_POR_UM_SEGREDO_ALEATORIO_DE_32_OU_MAIS_CARACTERES'
 .\mvnw.cmd spring-boot:run
 ```
 
-No Linux/macOS, use `export` para as variáveis e `./mvnw spring-boot:run`. O Maven Wrapper dispensa instalação separada do Maven. O Spring Boot não lê o `.env` automaticamente nessa forma de execução.
+Provisione previamente os três usuários conforme o [guia PostgreSQL](docs/postgresql-security.md). No Linux/macOS, use `export` para as variáveis e `./mvnw spring-boot:run`. O Maven Wrapper dispensa instalação separada do Maven. O Spring Boot não lê o `.env` automaticamente nessa forma de execução.
 
 Variáveis opcionais: `SERVER_PORT` (padrão `8080`), `JWT_EXPIRATION` em milissegundos (de `1` a `86400000`, padrão `86400000`) e `SHOW_SQL` (padrão `false`). O Flyway aplica as migrations na inicialização.
 
@@ -220,7 +222,7 @@ No Linux/macOS, use `./mvnw clean verify`. As suítes usam schemas de teste e li
 
 A validação das atualizações de dependências e configuração JWT passou com **299 testes**, incluindo testes unitários, integração com PostgreSQL e HTTP real. A cobertura inclui autorização, concorrência, rollback, idempotência e estornos. Isso não substitui teste de carga ou avaliação de segurança em produção.
 
-O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs para `develop` e `main`. Além dos testes Java, o pipeline executa 24 testes Node.js, o smoke HTTP do Compose e a collection Postman (185 requisições e 1047 assertions), reutilizando a imagem em um banco temporário separado. Publica apenas relatórios JUnit e Markdown sanitizados. A execução dessa integração no GitHub ainda precisa ser confirmada após a publicação do PR; veja o [guia de CI](docs/ci.md).
+O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs para `develop` e `main`. A suíte Java tem 302 testes: os 299 anteriores e três testes PostgreSQL de privilégios e upgrade em container próprio. O pipeline também executa 24 testes Node.js, o smoke HTTP do Compose e a collection Postman (185 requisições e 1047 assertions), reutilizando a imagem em um banco temporário com usuário restrito. Publica apenas relatórios JUnit e Markdown sanitizados; veja o [guia de CI](docs/ci.md). Docker é necessário para os testes de privilégios.
 
 ### Postman no VS Code
 
@@ -235,6 +237,7 @@ Resultados em `target/postman/latest/summary.md` e `report.html`. O ambiente tem
 ## Documentação complementar
 
 - [Docker: configuração, persistência e diagnóstico](docs/docker.md)
+- [PostgreSQL: usuários, privilégios e volumes existentes](docs/postgresql-security.md)
 - [CI: execução dos jobs e relatórios sanitizados](docs/ci.md)
 - [Testes HTTP: execução e cobertura](docs/http-validation.md)
 

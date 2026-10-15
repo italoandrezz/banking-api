@@ -1,110 +1,55 @@
 # Docker Compose
 
-Requires Docker Engine/Desktop with Linux containers and Docker Compose v2 or later.
-Run commands from the directory containing `compose.yaml` and `pom.xml`.
+Requer Docker Engine/Desktop com containers Linux e Compose v2. Execute os comandos no diretório de `compose.yaml` e `pom.xml`.
 
-## Start
+## Banco novo
 
-Copy `.env.example` to `.env` (PowerShell: `Copy-Item .env.example .env`) and set
-`DB_PASSWORD` and `JWT_SECRET` to separate random secrets. The JWT secret must have
-at least 32 ASCII characters. Compose rejects empty values for either variable.
-Keep an existing `.env` when restarting; it is ignored by Git and excluded from
-the Docker build context.
+Copie `.env.example` para `.env` e preencha quatro segredos distintos: `DB_ADMIN_PASSWORD`, `FLYWAY_PASSWORD`, `DB_PASSWORD` e `JWT_SECRET`. O segredo JWT deve ter ao menos 32 caracteres ASCII aleatórios. Não sobrescreva um `.env` existente.
 
 ```powershell
+docker compose config --quiet
 docker compose up -d --build --wait
 docker compose ps
 Invoke-RestMethod http://localhost:8080/actuator/health
 ```
 
-The API is published on loopback at `http://localhost:8080`, Swagger at
-`/swagger-ui/index.html`. `API_PORT` changes the host port if 8080 is occupied;
-the container always listens on 8080. PostgreSQL is reachable only within the
-Compose network as `db:5432`; it does not conflict with a local PostgreSQL server.
-The first build downloads Java/Maven dependencies and can take several minutes.
+A API publica somente em loopback; PostgreSQL não publica porta no host. O banco usa três identidades, descritas no [guia PostgreSQL](postgresql-security.md). O Flyway executa migrations com o migrador; JPA usa a aplicação sem privilégios DDL.
 
-| Compose variable | Meaning | Default |
+| Variável Compose | Finalidade | Padrão |
 |---|---|---|
-| `DB_NAME` | Database created on first initialization | `banking_db` |
-| `DB_USERNAME` | PostgreSQL initialization user | `banking_app` |
-| `DB_PASSWORD` | Database password | Required |
-| `JWT_SECRET` | JWT signing secret | Required |
-| `JWT_EXPIRATION` | Token lifetime in milliseconds | `86400000` |
-| `API_PORT` | Published local port | `8080` |
+| `DB_NAME` | Banco inicial | `banking_db` |
+| `DB_ADMIN_USERNAME` | Administrador inicial, exclusivo do serviço db | `banking_admin` |
+| `DB_ADMIN_PASSWORD` | Senha do administrador | Obrigatória |
+| `FLYWAY_USERNAME` | Migrador e proprietário dos objetos | `banking_migrator` |
+| `FLYWAY_PASSWORD` | Senha do migrador | Obrigatória |
+| `DB_USERNAME` | Aplicação | `banking_app` |
+| `DB_PASSWORD` | Senha da aplicação | Obrigatória |
+| `JWT_SECRET` | Assinatura JWT | Obrigatória |
+| `JWT_EXPIRATION` | Duração em ms, até 86400000 | `86400000` |
+| `API_PORT` | Porta da API no host | `8080` |
 
-The image is built in two stages using Java 17 and the repository's Maven Wrapper.
-Only the executable JAR is copied into the JRE runtime, which runs as UID 10001.
-Dependencies use a BuildKit cache. Tests require their own database and are not
-executed during the image build; run `./mvnw test` separately (Windows:
-`.\mvnw.cmd test`). The existing GitHub Actions workflow also runs `clean verify`.
+O script em `docker/postgres` é montado somente para leitura. O entrypoint oficial executa o provisionamento apenas no volume vazio. Não há reprovisionamento automático em volumes existentes.
 
-The database healthcheck uses `pg_isready`; API startup waits for it. Flyway applies
-the migrations before Hibernate validates the schema. The API healthcheck uses
-`GET /actuator/health`, including database availability. This public endpoint shows
-only `status`; other actuator endpoints are not exposed. Container restart policy
-restarts exited processes, not a running process that is merely unhealthy.
-
-## Validate and inspect
-
-```powershell
-.\scripts\Test-Compose.ps1
-# With a custom API_PORT:
-.\scripts\Test-Compose.ps1 -BaseUrl http://localhost:18080
-docker compose logs --tail=100 api
-docker compose logs --tail=100 db
-docker compose config --quiet
-```
-
-The smoke script makes real HTTP requests and checks registration, login, default
-role, account creation, deposits, withdrawals, transfers, resulting balances and
-paginated statements. It creates sample data that remains in the selected local
-database. It complements the full automated test suite; it is not a load test.
-Use `config --quiet` when checking configuration to avoid printing resolved secrets.
-
-## Persistence and shutdown
+## Persistência e instalações existentes
 
 ```powershell
 docker compose down
 docker compose up -d --wait
 ```
 
-The named `postgres_data` volume retains data across container recreation. Database
-initialization variables only apply to an empty volume: changing `DB_PASSWORD` in
-`.env` does not change an existing database user's password. Keep the original
-settings or change the user's password explicitly. Changing `JWT_SECRET` invalidates
-existing tokens. `docker compose down --volumes` deletes the project's database
-volume; use it only when intentionally discarding that environment's data.
+Esses comandos preservam o volume `postgres_data`. Não use `down --volumes` em bancos que precisam ser preservados. Alterar as variáveis no `.env` não altera senhas/roles de um PostgreSQL já inicializado. Antes de usar a configuração nova com volume antigo, siga o procedimento de backup, ensaio, adaptação e rollback no [guia PostgreSQL](postgresql-security.md). Nenhuma adaptação administrativa é executada automaticamente.
 
-## Running without Docker
-
-`application.properties` now accepts `DATABASE_URL` (default
-`jdbc:postgresql://localhost:5432/banking_db`), `DATABASE_USERNAME` (default
-`postgres`), mandatory `DATABASE_PASSWORD`, mandatory `JWT_SECRET`, optional
-`JWT_EXPIRATION`, `SERVER_PORT` and `SHOW_SQL` (default `false`). Compose maps its
-`DB_*` settings to these application variables. `.env` is read by Compose; Spring
-Boot does not load that file automatically when started with Maven.
+## Validação
 
 ```powershell
-$env:DATABASE_PASSWORD = 'your-local-database-password'
-$env:JWT_SECRET = 'your-random-signing-secret-at-least-32-characters'
-.\mvnw.cmd spring-boot:run
+.\scripts\Test-Compose.ps1 -BaseUrl http://localhost:8080
+.\scripts\Test-Postman.ps1
 ```
 
-The `test` profile retains its isolated database settings and test-only signing
-key. It does not require these application secrets and is not used by Compose.
+O primeiro script cria dados no ambiente selecionado; use um projeto descartável para testes. O segundo cria seu próprio PostgreSQL em tmpfs, verifica permissões e executa 185 requisições/1047 assertions, removendo seus recursos no final. Não utiliza o banco de desenvolvimento.
 
-## Validation performed
+A suíte `mvnw clean verify` exige Java 17, um PostgreSQL dedicado aos testes anteriores e Docker para os três novos testes de privilégios/upgrade. Consulte [CI](ci.md) e [Postman](postman-testing.md).
 
-Validated locally on 2026-10-12 using Docker Desktop/Linux containers:
+## Sem Docker
 
-- Compose configuration accepted valid secrets and rejected empty required secrets.
-- The multistage image built successfully; API and PostgreSQL reached healthy state.
-- The API ran as UID 10001, and Flyway applied all five migrations to PostgreSQL 17.
-- `Test-Compose.ps1` passed 15 real HTTP requests against the containerized API.
-  SQL confirmed two accounts, a combined balance of 90.00 and three transactions.
-- After `down` followed by `up`, those balances and history remained in the volume.
-- The full Maven suite passed 232 tests, including 318 real HTTP requests against
-  its isolated test server. Those are separate from the 15 Compose smoke requests.
-
-This validation used a separate Compose project and port 18080. It does not
-validate a public deployment, TLS or load behavior.
+Provisione os usuários e permissões antes de iniciar o Java. Configure `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `FLYWAY_USERNAME`, `FLYWAY_PASSWORD` e `JWT_SECRET`. O Spring Boot não carrega `.env` automaticamente. Nunca execute com o administrador como datasource runtime. O profile `test` usa configurações próprias de fixtures e não deve ser ativado em produção.
