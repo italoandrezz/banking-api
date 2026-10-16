@@ -125,7 +125,7 @@ Na primeira execução, uma assertion esperava apenas `application/json` para o 
 
 ## Integração no GitHub Actions
 
-O check `Docker Compose validation` executa os 24 testes Node.js, mantém o smoke do Compose principal e executa a collection completa em um novo PostgreSQL temporário. O `build` executa 302 testes Java: os 299 anteriores e três testes de privilégios e upgrade PostgreSQL.
+O check `Docker Compose validation` executa os 41 testes Node.js, mantém o smoke do Compose principal e executa a collection completa em um novo PostgreSQL temporário. O `build` executa 302 testes Java: os 299 anteriores e três testes de privilégios e upgrade PostgreSQL.
 
 O runner pode reutilizar uma imagem já construída com:
 
@@ -136,8 +136,23 @@ node scripts/postman/run.mjs --image $imageId
 
 Somente IDs locais `sha256:...` são aceitos; tags, registros remotos e URLs de API não são aceitos. A imagem emprestada permanece disponível após o teste; a imagem construída pelo próprio runner é removida na limpeza. Sem `--image`, as tasks existentes do VS Code continuam construindo a imagem automaticamente. A normalização de finais de linha no gerador mantém a collection consistente entre Windows e Linux.
 
-O CI instala Postman CLI 1.74.0 com versão e SHA-256 fixados. Publica somente JUnit e Markdown sanitizados, incluindo o resultado das etapas de infraestrutura. Ambientes privados, relatórios nativos e logs brutos não são artifacts. Consulte [CI](ci.md) para limites de cancelamento, política de atualização e lista dos relatórios.
+O CI instala Postman CLI 1.74.0 com versão e SHA-256 fixados. Publica JUnit e Markdown sanitizados, além do inventário de dependências Maven sem credenciais, incluindo o resultado das etapas de infraestrutura. Ambientes privados, relatórios nativos e logs brutos não são artifacts. Consulte [CI](ci.md) para limites de cancelamento, política de atualização e lista dos relatórios.
 
 A Fase 1 foi validada em Ubuntu no PR #39. Cada alteração posterior exige confirmação dos checks e artifacts no próprio PR; resultados locais não substituem essa confirmação.
 
 O PostgreSQL descartável utiliza três identidades e senhas aleatórias distintas: `postman_admin` para provisionamento/fixture administrativa, `postman_migrator` para Flyway e `postman_test` para o datasource da API. Antes da collection, uma conexão TCP autenticada como aplicação verifica atributos administrativos, memberships, propriedade, permissões de schema/banco e acesso ao histórico Flyway. Falhas reprovam a execução. O único bind aceito é `/docker-entrypoint-initdb.d`, somente para leitura, no container do banco; os dados continuam em tmpfs. Veja [segurança PostgreSQL](postgresql-security.md).
+
+## Recuperação e backup
+
+Execute `node scripts/postman/run.mjs --recovery` para acrescentar as seis
+verificações operacionais à collection. O CI usa essa opção. A porta da API é
+redescoberta no Compose após o reinício e precisa responder ao health antes do
+replay. O banco restaurado também é exercitado por uma segunda API sem Flyway.
+
+JUnit distingue falhas de infraestrutura de falhas de verificação da aplicação;
+Markdown identifica a etapa sem expor respostas ou SQL. Contagens e rótulos de
+verificações são públicos, mas credenciais, dados financeiros e hashes comparados
+ficam fora dos relatórios. As tasks existentes permanecem compatíveis.
+
+Consulte [backup e recuperação](recovery.md) para comandos, limites da simulação
+de perda de resposta, limpeza em falha e planejamento de rollback.

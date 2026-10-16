@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sanitizedReport, junitReport } from './report.mjs';
+import { verifyRecovery } from './recovery.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const inputArgs = process.argv.slice(2);
@@ -16,8 +17,8 @@ if (imageIndex >= 0) {
   inputArgs.splice(imageIndex, 2);
 }
 const args = new Set(inputArgs);
-if ([...args].some(a => !['--interactive', '--simulate-failure'].includes(a))) {
-  throw new Error('Accepted options: --image <local ID>, --interactive, --simulate-failure; arbitrary API targets are forbidden.');
+if ([...args].some(a => !['--interactive', '--simulate-failure', '--recovery'].includes(a))) {
+  throw new Error('Accepted options: --image <local ID>, --interactive, --simulate-failure, --recovery; arbitrary API targets are forbidden.');
 }
 const project = 'banking-postman-' + randomBytes(8).toString('hex');
 const outputDir = path.join(root, 'target/postman', project);
@@ -98,12 +99,14 @@ async function saveReports() {
   const totals = `${summary.requests} requisicoes; ${summary.assertions} assertions; ${summary.failedAssertions} assertions reprovadas.`;
   const rows = summary.endpoints.map(e => `| ${e.endpoint} | ${e.requests} | ${e.passed} | ${e.failed} |`).join('\n');
   const failures = summary.executions.filter(e => !e.passed).map(e => `- ${e.name}: HTTP esperado ${e.expectedStatus}, recebido ${e.status ?? 'sem resposta'}; assertions: ${e.assertions.filter(a => !a.passed).map(a => a.name).join(', ') || 'verificar script/status'}.`).join('\n');
-  const markdown = `# Postman - Banking API\n\nResultado: **${summary.success ? 'PASS' : 'FAIL'}**\n\n${totals}\n\nPostman CLI: ${summary.cliVersion || 'indisponivel'}.\n\nLimpeza automatica: ${summary.cleanup ? 'confirmada' : 'nao confirmada'}.\n\n${summary.infrastructureFailure ? 'Falha de infraestrutura na etapa: ' + summary.infrastructureFailure + '.\n\n' : ''}| Endpoint | Requisicoes | Aprovadas | Reprovadas |\n|---|---:|---:|---:|\n${rows}\n\n## Falhas\n\n${failures || (summary.success ? 'Nenhuma.' : 'Execucao incompleta ou falha de infraestrutura.')}\n\nRelatorio sem tokens, credenciais, identificadores de clientes, headers ou corpos HTTP.\n`;
+  const markdown = `# Postman - Banking API\n\nResultado: **${summary.success ? 'PASS' : 'FAIL'}**\n\n${totals}\n\nPostman CLI: ${summary.cliVersion || 'indisponivel'}.\n\nLimpeza automatica: ${summary.cleanup ? 'confirmada' : 'nao confirmada'}.\n\n${summary.infrastructureFailure ? 'Falha de infraestrutura na etapa: ' + summary.infrastructureFailure + '.\n\n' : ''}${summary.applicationFailure ? 'Falha de verificacao da aplicacao na etapa: ' + summary.applicationFailure + '.\n\n' : ''}| Endpoint | Requisicoes | Aprovadas | Reprovadas |\n|---|---:|---:|---:|\n${rows}\n\n## Falhas\n\n${failures || (summary.success ? 'Nenhuma.' : 'Execucao incompleta ou falha de infraestrutura.')}\n\nRelatorio sem tokens, credenciais, identificadores de clientes, headers ou corpos HTTP.\n`;
   const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Banking API - Postman</title><style>body{font:16px system-ui;max-width:1100px;margin:40px auto}table{border-collapse:collapse;width:100%}td,th{padding:8px;border:1px solid #ccc}summary{cursor:pointer}pre{white-space:pre-wrap}</style><h1>Postman: ${summary.success ? 'PASS' : 'FAIL'}</h1><p>${totals}</p><p>Limpeza: ${summary.cleanup ? 'confirmada' : 'nao confirmada'}</p>${summary.executions.map(e => `<details><summary>${e.passed ? 'PASS' : 'FAIL'}: ${escape(e.name)} — HTTP ${e.status ?? 'sem resposta'}</summary><ul>${e.assertions.map(a => `<li>${a.passed ? 'PASS' : 'FAIL'}: ${escape(a.name)}</li>`).join('')}</ul></details>`).join('')}</html>`;
   const junit = junitReport(summary);
+  const recoveryMarkdown = summary.recovery ? '\n## Recuperacao operacional\n\n' + summary.recovery.checks.map(name => '- PASS: ' + name).join('\n')
+    + '\n\nRegistros restaurados e comparados integralmente: ' + Object.entries(summary.recovery.rows).map(([table, count]) => `${table}: ${count}`).join('; ') + '.\n' : '';
   const latest = path.join(root, 'target/postman/latest');
   await mkdir(latest, { recursive: true });
-  for (const [filename, content] of Object.entries({ 'summary.json': JSON.stringify(summary, null, 2) + '\n', 'summary.md': markdown, 'report.html': html, 'junit.xml': junit })) {
+  for (const [filename, content] of Object.entries({ 'summary.json': JSON.stringify(summary, null, 2) + '\n', 'summary.md': markdown + recoveryMarkdown, 'report.html': html, 'junit.xml': junit })) {
     await writeFile(path.join(outputDir, filename), content);
     await writeFile(path.join(latest, filename), content);
   }
@@ -192,16 +195,23 @@ try {
   console.log(`${summary.requests} requests, ${summary.assertions} assertions, ${summary.failedAssertions} failed assertions.`);
   for (const failure of summary.executions.filter(e => !e.passed)) console.log(`FAIL: ${failure.name}; HTTP ${failure.status} (expected ${failure.expectedStatus}).`);
   exitCode = summary.success ? 0 : 1;
+  if (args.has('--recovery') && summary.success) {
+    stage = 'recovery';
+    summary.recovery = await verifyRecovery({ command, compose, dbId, baseUrl, testEnv,
+      onStage: name => { stage = 'recovery-' + name; console.log('Validating ' + stage + '...'); } });
+    console.log(`${summary.recovery.checks.length} recovery checks passed; restored data and privileges verified.`);
+  }
   if (args.has('--interactive') && summary.success) {
     await saveReports();
     console.log(`Inspection window: ${baseUrl}; isolationId=${project}. Ctrl+C ends it; automatic cleanup after 10 minutes.`);
     console.log('Import only the blank environment template into the extension. CLI reports are in target/postman/latest.');
     await new Promise(resolve => { const timer = setTimeout(resolve, 600_000); releaseInteractive = () => { clearTimeout(timer); resolve(); }; });
   }
-} catch {
+} catch (error) {
   summary.success = false;
-  summary.infrastructureFailure = interrupted ? 'interrupted' : stage;
-  console.error(`Validation failed during ${summary.infrastructureFailure}. No sensitive native output was saved.`);
+  if (!interrupted && error?.category === 'application-verification') summary.applicationFailure = stage;
+  else summary.infrastructureFailure = interrupted ? 'interrupted' : stage;
+  console.error(`Validation failed during ${stage} (${summary.applicationFailure ? 'application verification' : 'infrastructure'}). No sensitive native output was saved.`);
   exitCode = 1;
 } finally {
   cleaning = true;

@@ -10,7 +10,7 @@ COPY src/main src/main
 RUN --mount=type=cache,target=/root/.m2 sh ./mvnw -B -ntp -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:17-jre-jammy AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl libssl3 openssl libfreetype6 libpng16-16 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home banking
 WORKDIR /app

@@ -53,10 +53,29 @@ jobs:
           TEST_DATABASE_USERNAME: postgres
           TEST_DATABASE_PASSWORD: postgres
 
+      - name: Set up Node.js for dependency inventory
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+
+      - name: Export resolved Maven dependencies
+        run: |
+          ./mvnw -B -ntp dependency:tree -DoutputType=json -DoutputFile=target/dependency-tree.json
+          node scripts/security/sbom.mjs
+
+      - name: Upload dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-dependencies-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/security/maven.cdx.json
+          retention-days: 1
+          if-no-files-found: error
+
   compose:
     name: Docker Compose validation
+    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       COMPOSE_PROJECT_NAME: banking-ci
       DB_NAME: banking_ci
@@ -75,6 +94,12 @@ jobs:
       - name: Test Postman infrastructure
         id: node
         run: node --test scripts/postman/*.test.mjs
+
+      - name: Download resolved Maven dependency inventory
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-dependencies-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/security
 
       - name: Install verified Postman CLI
         id: install
@@ -104,9 +129,14 @@ jobs:
         timeout-minutes: 15
         shell: bash
         run: |
-          docker compose --progress plain build > "$RUNNER_TEMP/image-build.log" 2>&1
+          docker compose --progress plain build --pull > "$RUNNER_TEMP/image-build.log" 2>&1
           image_id=$(docker image inspect "$COMPOSE_PROJECT_NAME-api" --format '{{.Id}}')
           printf 'API_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
+
+      - name: Scan runtime image and Maven dependencies
+        id: security
+        timeout-minutes: 25
+        run: node scripts/security/scan.mjs "$API_IMAGE_ID"
 
       - name: Start healthy services
         id: startup
@@ -142,7 +172,7 @@ jobs:
       - name: Run isolated Postman collection
         id: postman
         timeout-minutes: 12
-        run: node scripts/postman/run.mjs --image "$API_IMAGE_ID"
+        run: node scripts/postman/run.mjs --image "$API_IMAGE_ID" --recovery
 
       - name: Generate sanitized pipeline reports
         if: always()
@@ -160,5 +190,7 @@ jobs:
             target/ci/summary.md
             target/postman/latest/junit.xml
             target/postman/latest/summary.md
+            target/security/junit.xml
+            target/security/summary.md
           retention-days: 7
           if-no-files-found: error

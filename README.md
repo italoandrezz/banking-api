@@ -222,7 +222,7 @@ No Linux/macOS, use `./mvnw clean verify`. As suítes usam schemas de teste e li
 
 A validação das atualizações de dependências e configuração JWT passou com **299 testes**, incluindo testes unitários, integração com PostgreSQL e HTTP real. A cobertura inclui autorização, concorrência, rollback, idempotência e estornos. Isso não substitui teste de carga ou avaliação de segurança em produção.
 
-O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs para `develop` e `main`. A suíte Java tem 302 testes: os 299 anteriores e três testes PostgreSQL de privilégios e upgrade em container próprio. O pipeline também executa 24 testes Node.js, o smoke HTTP do Compose e a collection Postman (185 requisições e 1047 assertions), reutilizando a imagem em um banco temporário com usuário restrito. Publica apenas relatórios JUnit e Markdown sanitizados; veja o [guia de CI](docs/ci.md). Docker é necessário para os testes de privilégios.
+O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs para `develop` e `main`. A suíte Java tem 302 testes: os 299 anteriores e três testes PostgreSQL de privilégios e upgrade em container próprio. O pipeline também executa 41 testes Node.js, o smoke HTTP do Compose e a collection Postman (185 requisições e 1047 assertions), reutilizando a imagem em um banco temporário com usuário restrito. Inclui Trivy sobre imagem e dependências Maven, além de seis verificações de recuperação e restauração. Publica relatórios JUnit/Markdown sanitizados e um inventário de dependências sem credenciais; veja o [guia de CI](docs/ci.md). Docker é necessário para os testes de privilégios.
 
 ### Postman no VS Code
 
@@ -239,6 +239,8 @@ Resultados em `target/postman/latest/summary.md` e `report.html`. O ambiente tem
 - [Docker: configuração, persistência e diagnóstico](docs/docker.md)
 - [PostgreSQL: usuários, privilégios e volumes existentes](docs/postgresql-security.md)
 - [CI: execução dos jobs e relatórios sanitizados](docs/ci.md)
+- [Backup, restauração e recuperação operacional](docs/recovery.md)
+- [Vulnerabilidades, atualizações e riscos residuais](docs/dependency-security.md)
 - [Testes HTTP: execução e cobertura](docs/http-validation.md)
 
 Os guias incluem registros de validações anteriores.

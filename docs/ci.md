@@ -5,17 +5,17 @@ O workflow `.github/workflows/ci.yml` executa em PRs para `develop` e `main`, al
 | Check | Validação |
 |---|---|
 | `build` | Java 17, PostgreSQL temporário e `./mvnw clean verify`: 302 testes Java (299 anteriores e 3 de privilégios/upgrade PostgreSQL em container próprio) |
-| `Docker Compose validation` | 24 testes Node.js, imagem Docker, smoke HTTP do Compose e collection Postman |
+| `Docker Compose validation` | 41 testes Node.js, imagem Docker, smoke HTTP do Compose e collection Postman |
 
 ## Fluxo Docker e Postman
 
-1. Instalar Node.js 24.19.0 e executar `node --test scripts/postman/*.test.mjs`: os 22 testes existentes e dois novos para os relatórios do pipeline.
+1. Instalar Node.js 24.19.0 e executar `node --test scripts/postman/*.test.mjs`: testes de infraestrutura Postman, relatórios, recuperação e segurança.
 2. Instalar Postman CLI 1.74.0 para Linux x64 com `scripts/ci/install-postman.sh`. O download oficial versionado precisa corresponder ao SHA-256 fixado no script. A versão do executável também é conferida.
 3. Gerar credenciais temporárias distintas para administrador, migrador e aplicação, além do JWT, mascaradas nos logs do Actions.
 4. Validar o Compose principal e construir a imagem uma única vez.
 5. Subir API e PostgreSQL, aguardar healthchecks e executar o smoke de 15 requisições.
 6. Remover containers, rede e volume desse projeto e verificar a ausência de recursos. Falhas de comando ou recursos remanescentes reprovam o job.
-7. Executar `node scripts/postman/run.mjs --image "$API_IMAGE_ID"`. O runner aceita somente um ID local imutável `sha256:...`, verifica sua existência e reutiliza a imagem sem build ou download da API. Não remove a imagem emprestada.
+7. Executar `node scripts/postman/run.mjs --image "$API_IMAGE_ID" --recovery`. O runner aceita somente um ID local imutável `sha256:...`, verifica sua existência e reutiliza a imagem sem build ou download da API. Não remove a imagem emprestada.
 8. Verificar os privilégios reais por conexão SQL autenticada e executar 185 requisições e 1047 assertions com usuário restrito em outro projeto Compose aleatório, com PostgreSQL em tmpfs, sem dados persistentes ou banco externo. O único bind permitido é o código de provisionamento, somente para leitura.
 9. Limpar os recursos Postman e o diretório privado, inclusive em falhas tratáveis.
 10. Gerar e publicar somente os relatórios explicitamente permitidos.
@@ -29,7 +29,7 @@ O artifact `api-validation-<run_id>-<run_attempt>` tem retenção de sete dias:
 
 O JUnit do pipeline representa etapas; o JUnit Postman representa requisições e erros globais. Não some ambos como quantidade de testes HTTP. Instalação que falhe antes do Postman gera erro no relatório do pipeline. Assertions, execução parcial, infraestrutura, interrupção e limpeza incompleta não produzem resultado Postman verde.
 
-Logs de build, inicialização e limpeza ficam apenas no diretório temporário do runner. Não são enviados logs dos serviços, relatórios nativos Postman, ambientes privados, headers, corpos HTTP nem XML bruto do Surefire. Os resultados Java continuam disponíveis no job `build`. O upload ocorre também em falhas, com uma lista explícita de quatro arquivos.
+Logs de build, inicialização e limpeza ficam apenas no diretório temporário do runner. Não são enviados logs dos serviços, relatórios nativos Postman, ambientes privados, headers, corpos HTTP nem XML bruto do Surefire. Os resultados Java continuam disponíveis no job `build`. O upload ocorre também em falhas, com uma lista explícita de seis arquivos JUnit/Markdown.
 
 Em cancelamento forçado, perda do runner ou término abrupto não há garantia de execução do `finally` nem de upload. No GitHub, os recursos pertencem à VM efêmera; check cancelado não equivale a aprovação.
 
@@ -40,3 +40,33 @@ A origem é a [distribuição oficial do Postman CLI](https://learning.postman.c
 ## Validação e publicação
 
 Testes locais e execução em container não substituem um run real do GitHub Actions. Em cada PR, confira ambos os checks, os testes de privilégios/upgrade e os relatórios publicados. A Fase 1 foi validada no PR #39; a execução de cada alteração seguinte deve ser confirmada no respectivo PR. Nenhuma regra de proteção é modificada pelo workflow.
+
+## Segurança e recuperação (Fase 3)
+
+O `build` exporta a árvore Maven efetivamente resolvida após `clean verify` e gera
+um inventário CycloneDX sanitizado com Node.js 24.19.0. O artifact
+`maven-dependencies-<run_id>-<run_attempt>` contém somente `maven.cdx.json`, com
+retenção de um dia. O job Compose depende do build e baixa esse inventário da mesma
+execução; falha ou ausência do inventário impede a análise de segurança.
+
+Antes de subir os serviços, `scripts/security/scan.mjs` executa Trivy 0.75.0 fixado
+por digest, sem socket Docker no scanner. Analisa a imagem final e as 124 coordenadas
+Maven (inclusive testes), verificando cobertura completa. Reutiliza a mesma imagem
+para smoke e Postman. A política bloqueia erros do scanner e achados relevantes;
+exceções Spring MVC têm versão, justificativa e expiração explícitas. Consulte
+[dependências e segurança](dependency-security.md).
+
+O artifact de validação também contém `target/security/junit.xml` e `summary.md`.
+Não inclui JSON bruto do Trivy, imagem exportada, dump, ambiente privado ou logs
+nativos. Os relatórios de pipeline incluem a etapa `security`; erro, cancelamento,
+execução omitida e limpeza não confirmada não podem produzir resultado verde.
+
+Postman usa `--recovery`: após a collection, testa reinício com redescoberta da porta,
+replay, indisponibilidade temporária, backup/restauração, permissões e HTTP contra
+o banco restaurado. As seis verificações geram casos JUnit adicionais (191 casos
+na execução bem-sucedida). As 185 requisições e 1047 assertions da collection
+continuam contadas separadamente. Veja o [procedimento operacional](recovery.md).
+
+A validação local de 16/10/2026 aprovou Java, Node.js, scanner, smoke, Postman e
+recuperação. A comprovação Ubuntu depende da execução real do PR desta fase;
+nenhum resultado local substitui checks, logs, artifacts e regras de proteção.
