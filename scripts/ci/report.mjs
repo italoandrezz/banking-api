@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 // Allowlist only static step IDs and enum outcomes. Never serialize native logs.
 export function pipelineReports(steps) {
-  const ids = ['node', 'install', 'environment', 'config', 'image', 'startup', 'smoke', 'cleanup', 'postman'];
+  const ids = ['node', 'install', 'environment', 'config', 'image', 'security', 'startup', 'smoke', 'cleanup', 'postman'];
   const rows = ids.map(id => ({ id, outcome: ['success', 'failure', 'cancelled', 'skipped'].includes(steps[id]?.outcome) ? steps[id].outcome : 'missing' }));
   const errors = rows.filter(row => row.outcome !== 'success').length;
   return {

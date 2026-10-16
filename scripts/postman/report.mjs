@@ -45,6 +45,7 @@ export function junitReport(summary) {
   const failures = executions.filter(e => !e.passed).length;
   const issues = [];
   if (summary.infrastructureFailure) issues.push('Infrastructure or interruption');
+  if (summary.applicationFailure) issues.push('Recovery application verification');
   if (summary.cleanup === false) issues.push('Cleanup not confirmed');
   if (summary.incomplete || (summary.expectedRequests !== undefined && executions.length !== summary.expectedRequests)
       || summary.requests !== executions.length) issues.push('Incomplete collection execution');
@@ -52,5 +53,6 @@ export function junitReport(summary) {
   if (!summary.success && failures === 0 && issues.length === 0) issues.push('Run failed without a request-level failure');
   const cases = executions.map(e => `<testcase classname="${escape(e.endpoint)}" name="${escape(e.name)}">${e.passed ? '' : '<failure type="AssertionOrRequestFailure" message="Unexpected status, script error or failed assertion; see summary.json"/>'}</testcase>`);
   cases.push(...issues.map(issue => `<testcase classname="Banking.Postman.Run" name="${issue}"><error type="RunError" message="${issue}; see summary.md"/></testcase>`));
+  cases.push(...(summary.recovery?.checks || []).map(name => `<testcase classname="Banking.Recovery" name="${escape(name)}"/>`));
   return `<?xml version="1.0" encoding="UTF-8"?><testsuite name="Banking API Postman" tests="${cases.length}" failures="${failures}" errors="${issues.length}">${cases.join('')}</testsuite>\n`;
 }

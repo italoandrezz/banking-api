@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pipelineReports } from '../ci/report.mjs';
 
-const ids = ['node', 'install', 'environment', 'config', 'image', 'startup', 'smoke', 'cleanup', 'postman'];
+const ids = ['node', 'install', 'environment', 'config', 'image', 'security', 'startup', 'smoke', 'cleanup', 'postman'];
 const complete = () => Object.fromEntries(ids.map(id => [id, { outcome: 'success' }]));
 test('CI reports successful pipeline without publishing arbitrary data', () => {
   const steps = complete(); steps.postman.outputs = { password: 'NEVER_EXPORT_THIS' };
@@ -18,5 +18,5 @@ test('CI reports failed, cancelled, skipped and missing steps as errors', () => 
     assert.match(reports.markdown, /FAIL/);
     assert.doesNotMatch(reports.xml, /untrusted-secret/);
   }
-  assert.match(pipelineReports({}).xml, /errors="9"/);
+  assert.match(pipelineReports({}).xml, /errors="10"/);
 });
