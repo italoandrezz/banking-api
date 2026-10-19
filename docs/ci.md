@@ -4,7 +4,7 @@ O workflow `.github/workflows/ci.yml` executa em PRs para `develop` e `main`, al
 
 | Check | Validação |
 |---|---|
-| `build` | Java 17, PostgreSQL temporário e `./mvnw clean verify`: 302 testes Java (299 anteriores e 3 de privilégios/upgrade PostgreSQL em container próprio) |
+| `build` | Java 17, PostgreSQL temporário e `./mvnw clean verify`: 316 testes Java (302 da Fase 3 e 14 de observabilidade) |
 | `Docker Compose validation` | 41 testes Node.js, imagem Docker, smoke HTTP do Compose e collection Postman |
 
 ## Fluxo Docker e Postman
@@ -63,7 +63,8 @@ execução omitida e limpeza não confirmada não podem produzir resultado verde
 
 Postman usa `--recovery`: após a collection, testa reinício com redescoberta da porta,
 replay, indisponibilidade temporária, backup/restauração, permissões e HTTP contra
-o banco restaurado. As seis verificações geram casos JUnit adicionais (191 casos
+o banco restaurado. Com a Etapa 4.1, também exige liveness UP e readiness 503 durante
+a indisponibilidade real do banco e readiness UP após recuperação. As sete verificações geram casos JUnit adicionais (192 casos
 na execução bem-sucedida). As 185 requisições e 1047 assertions da collection
 continuam contadas separadamente. Veja o [procedimento operacional](recovery.md).
 

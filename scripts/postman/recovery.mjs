@@ -96,14 +96,18 @@ export async function verifyRecovery({ command, compose, dbId, baseUrl, testEnv,
   await command('docker', ['pause', dbId]);
   let outageObserved = false;
   try {
-    try {
-      const response = await fetch(baseUrl + '/actuator/health', { signal: AbortSignal.timeout(2500) });
-      outageObserved = !response.ok;
-      await response.body?.cancel();
-    } catch { outageObserved = true; }
+    const live = await fetch(baseUrl + '/actuator/health/liveness', { signal: AbortSignal.timeout(5000) });
+    require(live.status === 200 && (await live.json()).status === 'UP');
+    const ready = await fetch(baseUrl + '/actuator/health/readiness', { signal: AbortSignal.timeout(15000) });
+    const body = await ready.json();
+    outageObserved = ready.status === 503 && body.status === 'DOWN';
+    require(!body.components && !body.details);
   } finally { await command('docker', ['unpause', dbId]); }
   require(outageObserved, 'Database outage was not observed');
   await waitHealthy();
+  const readyAgain = await fetch(baseUrl + '/actuator/health/readiness', { signal: AbortSignal.timeout(15000) });
+  require(readyAgain.status === 200 && (await readyAgain.json()).status === 'UP');
+  checks.push('Liveness UP e readiness 503 durante falha real do banco; readiness UP apos recuperacao');
   await request('POST', `/accounts/${account.id}/deposit`, { amount: 100 }, key);
   require(await financialState() === '100.00:1:1', 'Database recovery changed committed state');
   checks.push('Recuperacao da conexao apos indisponibilidade do PostgreSQL');

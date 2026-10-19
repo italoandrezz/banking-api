@@ -399,7 +399,10 @@ class HttpEndpointValidationTest {
     void healthcheckIsPublicWithoutExposingComponents() throws Exception {
         JsonNode health = call("GET", "/actuator/health", null, null, 200);
         assertEquals("UP", health.path("status").asText());
-        assertEquals(1, health.size());
+        assertEquals(2, health.size());
+        assertEquals(mapper.readTree("[\"liveness\",\"readiness\"]"), health.path("groups"));
+        assertFalse(health.has("components"));
+        assertFalse(health.has("details"));
         call("GET", "/actuator/env", null, null, 401);
         call("GET", "/accounts", null, null, 401);
     }

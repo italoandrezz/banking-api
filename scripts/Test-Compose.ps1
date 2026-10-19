@@ -31,7 +31,8 @@ function New-SmokeCustomer {
 
 $health = Invoke-Api GET '/actuator/health'
 Assert-Equal $health.status 'UP' 'application health'
-Assert-Equal @($health.PSObject.Properties).Count 1 'health details hidden'
+Assert-Equal ((@($health.PSObject.Properties.Name) | Sort-Object) -join ',') 'groups,status' 'health fields restricted'
+Assert-Equal ((@($health.groups) | Sort-Object) -join ',') 'liveness,readiness' 'public health groups'
 $source = New-SmokeCustomer
 $destination = New-SmokeCustomer
 $null = Invoke-Api POST "/accounts/$($source.AccountId)/deposit" @{ amount = 100 } $source.Token

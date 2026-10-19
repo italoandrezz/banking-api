@@ -69,7 +69,7 @@ request('Health sem detalhes internos', 'GET', '/actuator/health', 200, { auth: 
   pm.variables.set('missingId', pm.variables.replaceIn('{{$randomUUID}}'));
   pm.variables.set('badToken', 'invalid.jwt.token');
   for (const key of ['depositKey','withdrawKey','transferKey']) pm.variables.set(key, pm.variables.replaceIn('{{$randomUUID}}'));`,
-  tests: [check('Health UP only', "data.status === 'UP' && Object.keys(data).length === 1")] });
+  tests: [check('Health UP with only public probe groups', "data.status === 'UP' && JSON.stringify(Object.keys(data).sort()) === JSON.stringify(['groups','status']) && Array.isArray(data.groups) && JSON.stringify([...data.groups].sort()) === JSON.stringify(['liveness','readiness'])")] });
 request('Inventario OpenAPI das 18 rotas', 'GET', '/v3/api-docs', 200, { auth: null,
   tests: [check('Exact business route inventory', `JSON.stringify(Object.entries(data.paths).flatMap(([p, verbs]) => Object.keys(verbs).filter(m => ['get','post','put','patch','delete'].includes(m)).map(m => m.toUpperCase() + ' ' + p)).sort()) === JSON.stringify(${JSON.stringify([...routes].sort())})`)] });
 
