@@ -22,6 +22,19 @@ test('Maven scan must cover every coordinate in the resolved inventory', () => {
 const finding = () => ({ VulnerabilityID: 'CVE-2026-47884', PkgName: 'org.springframework:spring-webmvc', InstalledVersion: '6.2.19', Severity: 'CRITICAL' });
 const scan = vulnerabilities => ({ SchemaVersion: 2, Results: [{ Class: 'os-pkgs', Type: 'ubuntu' }, { Class: 'lang-pkgs', Type: 'jar', Vulnerabilities: vulnerabilities }] });
 const options = { kind: 'image', source: '@RestController class Example {}', now: new Date('2026-10-15') };
+
+test('Nginx requires OS inventory with nginx and preserves vulnerability thresholds', () => {
+  const report = { SchemaVersion: 2, Results: [{ Class: 'os-pkgs', Packages: [{ Name: 'nginx', Version: '1.30.6-r1' }] }] };
+  assert.deepEqual(evaluateScan(report, { kind: 'nginx' }), []);
+  for (const Packages of [undefined, [], [{ Name: 'other', Version: '1' }]])
+    assert.throws(() => evaluateScan({ ...report, Results: [{ Class: 'os-pkgs', Packages }] }, { kind: 'nginx' }));
+  assert.throws(() => evaluateScan(report, { kind: 'unknown' }));
+  assert.throws(() => evaluateScan(report, { kind: 'image' }));
+  for (const Severity of ['UNKNOWN', 'HIGH', 'CRITICAL', 'MEDIUM']) {
+    report.Results[0].Vulnerabilities = [{ ...finding(), PkgName: 'zlib', Severity, FixedVersion: '1.3.2-r1' }];
+    assert.equal(evaluateScan(report, { kind: 'nginx' })[0].blocked, true);
+  }
+});
 test('Security gate rejects missing, malformed and incomplete scanner output', () => {
   for (const report of [{}, { SchemaVersion: 2, Results: [] }, { SchemaVersion: 2, Results: [{ Class: 'os-pkgs' }] }]) assert.throws(() => evaluateScan(report, options));
   assert.throws(() => evaluateScan(scan([{ ...finding(), Severity: 'invented' }]), options));

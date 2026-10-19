@@ -13,7 +13,7 @@ docker compose ps
 Invoke-RestMethod http://localhost:8080/actuator/health
 ```
 
-A API publica somente em loopback; PostgreSQL não publica porta no host. O banco usa três identidades, descritas no [guia PostgreSQL](postgresql-security.md). O Flyway executa migrations com o migrador; JPA usa a aplicação sem privilégios DDL.
+Somente o Nginx publica em loopback; API e PostgreSQL não publicam portas no host. Consulte os [limites de login e cadastro](auth-rate-limiting.md), a topologia e os testes isolados. O banco usa três identidades, descritas no [guia PostgreSQL](postgresql-security.md). O Flyway executa migrations com o migrador; JPA usa a aplicação sem privilégios DDL.
 
 | Variável Compose | Finalidade | Padrão |
 |---|---|---|
@@ -26,7 +26,7 @@ A API publica somente em loopback; PostgreSQL não publica porta no host. O banc
 | `DB_PASSWORD` | Senha da aplicação | Obrigatória |
 | `JWT_SECRET` | Assinatura JWT | Obrigatória |
 | `JWT_EXPIRATION` | Duração em ms, até 86400000 | `86400000` |
-| `API_PORT` | Porta da API no host | `8080` |
+| `API_PORT` | Porta do Nginx no host | `8080` |
 
 O script em `docker/postgres` é montado somente para leitura. O entrypoint oficial executa o provisionamento apenas no volume vazio. Não há reprovisionamento automático em volumes existentes.
 

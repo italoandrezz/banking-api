@@ -43,7 +43,7 @@ docker compose up -d --build --wait
 | OpenAPI | http://localhost:8080/v3/api-docs |
 | Saúde da aplicação | http://localhost:8080/actuator/health |
 
-A API fica acessível apenas na máquina local; o PostgreSQL não publica uma porta no host. Altere `API_PORT` no `.env` se a porta 8080 estiver ocupada.
+Somente o Nginx publica uma porta em loopback; API e PostgreSQL permanecem nas redes internas. Altere `API_PORT` no `.env` se a porta 8080 estiver ocupada. Login e cadastro possuem [limites de requisições configuráveis](docs/auth-rate-limiting.md).
 
 ```powershell
 .\scripts\Test-Compose.ps1
