@@ -1,7 +1,10 @@
 // Exceptions are narrowly scoped and expire. They do not assert patched libraries.
 const springIds = new Set(['CVE-2026-47884', 'CVE-2026-47890']);
 export function evaluateScan(report, { kind, source = '', now = new Date(), expectedCoordinates = [] }) {
+  if (!['image', 'maven', 'nginx'].includes(kind)) throw new Error('Unsupported scan kind');
   if (report.SchemaVersion !== 2 || !Array.isArray(report.Results) || !report.Results.length) throw new Error('Invalid scanner report');
+  if (kind === 'nginx' && !report.Results.some(r => r.Class === 'os-pkgs' && Array.isArray(r.Packages)
+      && r.Packages.some(p => p.Name === 'nginx' && p.Version))) throw new Error('Incomplete Nginx coverage');
   if (kind === 'image' && (!report.Results.some(r => r.Class === 'os-pkgs') || !report.Results.some(r => r.Class === 'lang-pkgs' && r.Type === 'jar'))) throw new Error('Incomplete image coverage');
   if (kind === 'maven' && !report.Results.some(r => r.Class === 'lang-pkgs' && r.Type === 'jar')) throw new Error('Incomplete Maven coverage');
   if (kind === 'maven') {

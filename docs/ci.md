@@ -5,7 +5,7 @@ O workflow `.github/workflows/ci.yml` executa em PRs para `develop` e `main`, al
 | Check | Validação |
 |---|---|
 | `build` | Java 17, PostgreSQL temporário e `./mvnw clean verify`: 316 testes Java (302 da Fase 3 e 14 de observabilidade) |
-| `Docker Compose validation` | 41 testes Node.js, imagem Docker, smoke HTTP do Compose e collection Postman |
+| `Docker Compose validation` | 42 testes Node.js, imagem Docker, smoke HTTP do Compose e collection Postman |
 
 ## Fluxo Docker e Postman
 
@@ -13,7 +13,7 @@ O workflow `.github/workflows/ci.yml` executa em PRs para `develop` e `main`, al
 2. Instalar Postman CLI 1.74.0 para Linux x64 com `scripts/ci/install-postman.sh`. O download oficial versionado precisa corresponder ao SHA-256 fixado no script. A versão do executável também é conferida.
 3. Gerar credenciais temporárias distintas para administrador, migrador e aplicação, além do JWT, mascaradas nos logs do Actions.
 4. Validar o Compose principal e construir a imagem uma única vez.
-5. Subir API e PostgreSQL, aguardar healthchecks e executar o smoke de 15 requisições.
+5. Subir Nginx, API e PostgreSQL, aguardar healthchecks e executar o smoke de 15 requisições.
 6. Remover containers, rede e volume desse projeto e verificar a ausência de recursos. Falhas de comando ou recursos remanescentes reprovam o job.
 7. Executar `node scripts/postman/run.mjs --image "$API_IMAGE_ID" --recovery`. O runner aceita somente um ID local imutável `sha256:...`, verifica sua existência e reutiliza a imagem sem build ou download da API. Não remove a imagem emprestada.
 8. Verificar os privilégios reais por conexão SQL autenticada e executar 185 requisições e 1047 assertions com usuário restrito em outro projeto Compose aleatório, com PostgreSQL em tmpfs, sem dados persistentes ou banco externo. O único bind permitido é o código de provisionamento, somente para leitura.
@@ -29,7 +29,7 @@ O artifact `api-validation-<run_id>-<run_attempt>` tem retenção de sete dias:
 
 O JUnit do pipeline representa etapas; o JUnit Postman representa requisições e erros globais. Não some ambos como quantidade de testes HTTP. Instalação que falhe antes do Postman gera erro no relatório do pipeline. Assertions, execução parcial, infraestrutura, interrupção e limpeza incompleta não produzem resultado Postman verde.
 
-Logs de build, inicialização e limpeza ficam apenas no diretório temporário do runner. Não são enviados logs dos serviços, relatórios nativos Postman, ambientes privados, headers, corpos HTTP nem XML bruto do Surefire. Os resultados Java continuam disponíveis no job `build`. O upload ocorre também em falhas, com uma lista explícita de seis arquivos JUnit/Markdown.
+Logs de build, inicialização e limpeza ficam apenas no diretório temporário do runner. Não são enviados logs dos serviços, relatórios nativos Postman, ambientes privados, headers, corpos HTTP nem XML bruto do Surefire. Os resultados Java continuam disponíveis no job `build`. O upload ocorre também em falhas, com uma lista explícita de oito arquivos JUnit/Markdown.
 
 Em cancelamento forçado, perda do runner ou término abrupto não há garantia de execução do `finally` nem de upload. No GitHub, os recursos pertencem à VM efêmera; check cancelado não equivale a aprovação.
 
@@ -56,7 +56,15 @@ para smoke e Postman. A política bloqueia erros do scanner e achados relevantes
 exceções Spring MVC têm versão, justificativa e expiração explícitas. Consulte
 [dependências e segurança](dependency-security.md).
 
-O artifact de validação também contém `target/security/junit.xml` e `summary.md`.
+O CI também constrói a imagem Nginx e passa seu ID local imutável ao mesmo runner,
+com `node scripts/security/scan.mjs "$NGINX_IMAGE_ID" --nginx`. Esse modo exige
+inventário de pacotes do sistema contendo Nginx, sem exigir JARs inexistentes no
+proxy. Severidades, correções disponíveis e bloqueios permanecem os mesmos;
+a cobertura obrigatória da imagem Java e do inventário Maven não muda. Falha em
+qualquer scan reprova a etapa `security` e o check `Docker Compose validation`.
+
+O artifact de validação também contém `target/security/junit.xml` e `summary.md`,
+além de `target/nginx-security/junit.xml` e `summary.md` para o proxy.
 Não inclui JSON bruto do Trivy, imagem exportada, dump, ambiente privado ou logs
 nativos. Os relatórios de pipeline incluem a etapa `security`; erro, cancelamento,
 execução omitida e limpeza não confirmada não podem produzir resultado verde.

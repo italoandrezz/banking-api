@@ -132,11 +132,15 @@ jobs:
           docker compose --progress plain build --pull > "$RUNNER_TEMP/image-build.log" 2>&1
           image_id=$(docker image inspect "$COMPOSE_PROJECT_NAME-api" --format '{{.Id}}')
           printf 'API_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
+          nginx_image_id=$(docker image inspect "$COMPOSE_PROJECT_NAME-nginx" --format '{{.Id}}')
+          printf 'NGINX_IMAGE_ID=%s\n' "$nginx_image_id" >> "$GITHUB_ENV"
 
-      - name: Scan runtime image and Maven dependencies
+      - name: Scan API, Maven dependencies and Nginx
         id: security
         timeout-minutes: 25
-        run: node scripts/security/scan.mjs "$API_IMAGE_ID"
+        run: |
+          node scripts/security/scan.mjs "$API_IMAGE_ID"
+          node scripts/security/scan.mjs "$NGINX_IMAGE_ID" --nginx
 
       - name: Start healthy services
         id: startup
@@ -192,5 +196,7 @@ jobs:
             target/postman/latest/summary.md
             target/security/junit.xml
             target/security/summary.md
+            target/nginx-security/junit.xml
+            target/nginx-security/summary.md
           retention-days: 7
           if-no-files-found: error
