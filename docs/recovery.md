@@ -47,7 +47,7 @@ do PostgreSQL nem provisionamento automático de outro cluster de produção.
 ## Evidências e limpeza
 
 JUnit e Markdown ficam em `target/postman/<projeto>/` e `target/postman/latest/`.
-As seis verificações operacionais são casos JUnit adicionais, separados das 185
+As sete verificações operacionais atuais são casos JUnit adicionais, separados das 185
 requisições da collection; não são contabilizadas como assertions Postman.
 Falhas de comandos, descoberta de porta ou conectividade são infraestrutura.
 Uma resposta HTTP inesperada ou divergência de estado é uma falha de verificação
@@ -76,6 +76,10 @@ queda de rede antes dos headers, e a pausa curta não substitui teste prolongado
 failover, corrupção de disco, desastre regional ou concorrência durante restauração.
 
 ## Procedimento operacional e rollback
+
+A Etapa 4.1 acrescenta a verificação de liveness UP e readiness DOWN/503 durante
+a pausa real do banco, seguida de readiness UP após recuperação. O registro de
+16/10 acima continua sendo histórico de seis verificações. Veja [observabilidade](observability.md).
 
 Este script é um ensaio descartável, não uma ferramenta de restauração de produção.
 Para um ambiente real, planeje uma janela e um procedimento revisado:

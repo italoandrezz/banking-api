@@ -69,7 +69,7 @@ $env:JWT_SECRET = 'SUBSTITUA_POR_UM_SEGREDO_ALEATORIO_DE_32_OU_MAIS_CARACTERES'
 
 Provisione previamente os três usuários conforme o [guia PostgreSQL](docs/postgresql-security.md). No Linux/macOS, use `export` para as variáveis e `./mvnw spring-boot:run`. O Maven Wrapper dispensa instalação separada do Maven. O Spring Boot não lê o `.env` automaticamente nessa forma de execução.
 
-Variáveis opcionais: `SERVER_PORT` (padrão `8080`), `JWT_EXPIRATION` em milissegundos (de `1` a `86400000`, padrão `86400000`) e `SHOW_SQL` (padrão `false`). O Flyway aplica as migrations na inicialização.
+Variáveis opcionais: `SERVER_PORT` (padrão `8080`) e `JWT_EXPIRATION` em milissegundos (de `1` a `86400000`, padrão `86400000`). O SQL direto permanece desabilitado para evitar exposição de dados. O Flyway aplica as migrations na inicialização.
 
 A inicialização falha se `JWT_SECRET` estiver ausente, em branco ou tiver menos de 32 bytes UTF-8, ou se a duração JWT for inválida. A chave continua sendo texto UTF-8, sem decodificação Base64. Use um segredo aleatório; tamanho mínimo não garante entropia. O limite de 24 horas mantém o padrão existente e limita a validade de tokens sem revogação individual. Chaves maiores continuam selecionando o algoritmo HMAC adequado. Consulte as [decisões de atualização das dependências](docs/dependency-security.md).
 
@@ -222,7 +222,7 @@ No Linux/macOS, use `./mvnw clean verify`. As suítes usam schemas de teste e li
 
 A validação das atualizações de dependências e configuração JWT passou com **299 testes**, incluindo testes unitários, integração com PostgreSQL e HTTP real. A cobertura inclui autorização, concorrência, rollback, idempotência e estornos. Isso não substitui teste de carga ou avaliação de segurança em produção.
 
-O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs para `develop` e `main`. A suíte Java tem 302 testes: os 299 anteriores e três testes PostgreSQL de privilégios e upgrade em container próprio. O pipeline também executa 41 testes Node.js, o smoke HTTP do Compose e a collection Postman (185 requisições e 1047 assertions), reutilizando a imagem em um banco temporário com usuário restrito. Inclui Trivy sobre imagem e dependências Maven, além de seis verificações de recuperação e restauração. Publica relatórios JUnit/Markdown sanitizados e um inventário de dependências sem credenciais; veja o [guia de CI](docs/ci.md). Docker é necessário para os testes de privilégios.
+O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs para `develop` e `main`. A suíte Java contém os 302 testes da Fase 3 e 14 testes de observabilidade. O pipeline também executa 41 testes Node.js, o smoke HTTP do Compose e a collection Postman (185 requisições e 1047 assertions), reutilizando a imagem em um banco temporário com usuário restrito. Inclui Trivy sobre imagem e dependências Maven, além de sete verificações de recuperação, restauração e probes. Publica relatórios JUnit/Markdown sanitizados e um inventário de dependências sem credenciais; veja o [guia de CI](docs/ci.md). Docker é necessário para os testes de privilégios.
 
 ### Postman no VS Code
 
@@ -235,6 +235,8 @@ A task **Postman: testar API isolada** executa 185 requisições e 1047 assertio
 Resultados em `target/postman/latest/summary.md` e `report.html`. O ambiente temporário é limpo automaticamente. Consulte o [guia Postman](docs/postman-testing.md) para instalação, cobertura e inspeção na extensão do VS Code.
 
 ## Documentação complementar
+
+Health agregado, probes de liveness/readiness, correlation ID e logs JSON com campos restritos estão descritos no [guia de observabilidade](docs/observability.md). Métricas HTTP, JVM e Hikari são coletadas internamente; os endpoints de diagnóstico não são públicos.
 
 - [Docker: configuração, persistência e diagnóstico](docs/docker.md)
 - [PostgreSQL: usuários, privilégios e volumes existentes](docs/postgresql-security.md)

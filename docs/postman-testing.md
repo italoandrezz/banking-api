@@ -125,7 +125,7 @@ Na primeira execução, uma assertion esperava apenas `application/json` para o 
 
 ## Integração no GitHub Actions
 
-O check `Docker Compose validation` executa os 41 testes Node.js, mantém o smoke do Compose principal e executa a collection completa em um novo PostgreSQL temporário. O `build` executa 302 testes Java: os 299 anteriores e três testes de privilégios e upgrade PostgreSQL.
+O check `Docker Compose validation` executa os 41 testes Node.js, mantém o smoke do Compose principal e executa a collection completa em um novo PostgreSQL temporário. O `build` executa 316 testes Java: os 302 da Fase 3 e 14 de observabilidade. O health agregado deve conter somente `status` e os grupos públicos `liveness`/`readiness`; componentes e detalhes continuam proibidos.
 
 O runner pode reutilizar uma imagem já construída com:
 
@@ -144,7 +144,7 @@ O PostgreSQL descartável utiliza três identidades e senhas aleatórias distint
 
 ## Recuperação e backup
 
-Execute `node scripts/postman/run.mjs --recovery` para acrescentar as seis
+Execute `node scripts/postman/run.mjs --recovery` para acrescentar as sete
 verificações operacionais à collection. O CI usa essa opção. A porta da API é
 redescoberta no Compose após o reinício e precisa responder ao health antes do
 replay. O banco restaurado também é exercitado por uma segunda API sem Flyway.

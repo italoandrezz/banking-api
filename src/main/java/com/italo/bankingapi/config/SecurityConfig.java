@@ -44,7 +44,9 @@ public class SecurityConfig {
                         // Preserve the original status when Tomcat internally dispatches to /error.
                         // Direct client requests to /error still require authentication.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/liveness",
+                                "/actuator/health/readiness").permitAll()
+                        .requestMatchers("/actuator", "/actuator/**").denyAll()
                         .requestMatchers(HttpMethod.POST, "/auth/login")
                         .permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()

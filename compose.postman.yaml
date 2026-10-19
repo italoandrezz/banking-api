@@ -26,7 +26,8 @@ services:
     pull_policy: never
     build: .
     environment:
-      DATABASE_URL: jdbc:postgresql://db:5432/banking_postman_test
+      DATABASE_URL: jdbc:postgresql://db:5432/banking_postman_test?connectTimeout=2&socketTimeout=3
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: '3000'
       DATABASE_USERNAME: postman_test
       DATABASE_PASSWORD: ${POSTMAN_TEST_DB_PASSWORD:?Use scripts/Test-Postman.ps1}
       FLYWAY_USERNAME: postman_migrator
