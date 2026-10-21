@@ -43,7 +43,8 @@ o relatório combinado tem 56 linhas, não 56 CVEs únicos.
   com versão corrigida também bloqueia. LOW e MEDIUM sem correção permanecem
   visíveis para acompanhamento; aprovação do gate não significa imagem sem CVEs.
 - Apenas CVE-2026-47884 e CVE-2026-47890 em `spring-webmvc:6.2.19` recebem exceção
-  de não aplicabilidade até **15/11/2026**. Os avisos Spring classificam os casos
+  de não aplicabilidade até **15/11/2026 às 00:00 UTC**, sem incluir esse instante
+  (14/11/2026 às 21:00 em Fortaleza). Os avisos Spring classificam os casos
   como MEDIUM e LOW, respectivamente, enquanto o scanner os apresenta CRITICAL.
   O primeiro exige XsltView e resolução específica de view; o segundo exige SSE
   com fragmentos de views e conteúdo controlado por atacante. Controllers REST
@@ -54,6 +55,23 @@ o relatório combinado tem 56 linhas, não 56 CVEs únicos.
   referências a views/SSE no código e configuração; novos usos, versão diferente
   ou expiração bloqueiam a exceção. A guarda não substitui revisão humana de
   configuração externa, dependências ou criação dinâmica de beans.
+
+### Acompanhamento na Fase 4.2.2
+
+As duas exceções continuam sendo aceitação temporária condicionada, não correção.
+O responsável pela release deve decidir antes da expiração entre obter o patch
+6.2.20 comercial ou planejar uma atualização compatível para uma linha corrigida;
+Spring 7.0.9 é a correção OSS citada nos avisos, mas exige avaliação de migração
+major e autorização específica. Não prolongar a exceção automaticamente.
+Se os achados ainda vierem como CRITICAL após o prazo, a política atual os bloqueia.
+Severidade do scanner, classificação do fornecedor, CVSS e aplicabilidade devem
+ser registrados separadamente, sem tratar sua divergência como falso positivo.
+Esta atualização documental não executou nova análise de vulnerabilidades nem
+alterou `policy.mjs`; os números da auditoria acima permanecem históricos.
+
+Rotação emergencial de JWT, riscos das credenciais em runtime e os planos das
+Fases 4.3 (Flyway separado) e 4.4 (gestão de secrets) estão no
+[guia de segurança operacional](security-operations.md).
 
 ### Risco residual
 

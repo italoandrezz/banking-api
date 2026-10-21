@@ -243,6 +243,7 @@ Health agregado, probes de liveness/readiness, correlation ID e logs JSON com ca
 - [CI: execução dos jobs e relatórios sanitizados](docs/ci.md)
 - [Backup, restauração e recuperação operacional](docs/recovery.md)
 - [Vulnerabilidades, atualizações e riscos residuais](docs/dependency-security.md)
+- [Segurança operacional: rotação JWT, secrets e próximas fases](docs/security-operations.md)
 - [Testes HTTP: execução e cobertura](docs/http-validation.md)
 
 Os guias incluem registros de validações anteriores.
