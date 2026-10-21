@@ -14,10 +14,10 @@ As entidades utilizam UUID: nenhuma sequence é necessária atualmente.
 O Hibernate permanece em `ddl-auto=validate`. O Flyway usa conexão própria,
 com `clean` desabilitado. As migrations V1 a V5 permanecem inalteradas.
 
-O administrador mantém acesso administrativo, inclusive aos dados. O processo da
-API recebe as credenciais do migrador para executar Flyway na inicialização;
-separar as migrations em um job de deploy e retirar esse segredo do processo é
-uma possível evolução, não uma garantia desta implementação.
+O administrador mantém acesso administrativo, inclusive aos dados. As credenciais
+DDL ficam no bootstrap do banco e no serviço temporário `migrate`, nunca na API.
+O [procedimento de migrations](migrations.md) descreve inicialização, atualização
+de volumes existentes e rollback.
 
 ## Banco novo
 
@@ -34,22 +34,23 @@ docker compose up -d --build --wait
 Esses comandos pressupõem um projeto com volume novo. O entrypoint oficial só
 executa `docker/postgres/10-roles.sh` quando o diretório de dados está vazio.
 O script, montado somente para leitura, cria as identidades e revoga os privilégios
-de PUBLIC no banco/schema. A API aguarda o healthcheck do PostgreSQL.
+de PUBLIC no banco/schema. O migrador aguarda o banco saudável; a API aguarda sua saída zero.
 Reiniciar um volume existente não reprovisiona roles nem altera suas senhas.
 
 Sem Compose, o administrador deve provisionar previamente o banco e os papéis.
-Configure `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`,
-`FLYWAY_USERNAME` e `FLYWAY_PASSWORD` no processo Java, além do JWT.
+Configure `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` e JWT somente
+na API. Injete `MIGRATION_DATABASE_URL`, `FLYWAY_USERNAME` e `FLYWAY_PASSWORD`
+em outro processo, exclusivo para o `MigrationRunner`.
 O migrador precisa ter a configuração por banco `banking.application_role`
 apontando para o usuário runtime; ela é criada pelo provisionamento e utilizada
 pelo callback `src/main/resources/db/callback/afterMigrate.sql`.
 
 ## Migrations e objetos futuros
 
-Ao iniciar a API, Flyway valida o histórico, aplica migrations pendentes com o
-migrador e executa o callback transacional de permissões. Depois, Hibernate
-valida o schema e utiliza apenas o datasource runtime nas operações da API.
-Em uma instalação já provisionada, reiniciar a API executa esse mesmo fluxo.
+O serviço `migrate` valida o histórico, aplica migrations pendentes e executa o
+callback transacional de permissões. Só depois a API inicia, com Hibernate
+validando o schema e utilizando apenas o datasource runtime. Reiniciar a API
+não reaplica migrations: cada deploy deve executar um migrador novo da mesma imagem.
 
 O callback concede acesso apenas à lista explícita de tabelas de negócio.
 Não há GRANT automático em todas as tabelas futuras: isso exporia tabelas internas,

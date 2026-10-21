@@ -61,15 +61,15 @@ Requisitos: JDK 17 e PostgreSQL com o banco `banking_db` criado. Configure as va
 $env:DATABASE_URL = 'jdbc:postgresql://localhost:5432/banking_db'
 $env:DATABASE_USERNAME = 'banking_app'
 $env:DATABASE_PASSWORD = 'SUA_SENHA_DO_BANCO'
-$env:FLYWAY_USERNAME = 'banking_migrator'
-$env:FLYWAY_PASSWORD = 'SUA_SENHA_DO_MIGRADOR'
 $env:JWT_SECRET = 'SUBSTITUA_POR_UM_SEGREDO_ALEATORIO_DE_32_OU_MAIS_CARACTERES'
 .\mvnw.cmd spring-boot:run
 ```
 
 Provisione previamente os três usuários conforme o [guia PostgreSQL](docs/postgresql-security.md). No Linux/macOS, use `export` para as variáveis e `./mvnw spring-boot:run`. O Maven Wrapper dispensa instalação separada do Maven. O Spring Boot não lê o `.env` automaticamente nessa forma de execução.
 
-Variáveis opcionais: `SERVER_PORT` (padrão `8080`) e `JWT_EXPIRATION` em milissegundos (de `1` a `86400000`, padrão `86400000`). O SQL direto permanece desabilitado para evitar exposição de dados. O Flyway aplica as migrations na inicialização.
+Antes de iniciar a API, execute o migrador em um processo separado conforme o [guia de migrations](docs/migrations.md). O runtime não recebe credenciais DDL e não executa Flyway. No Compose, `db` saudável → `migrate` concluído → API saudável → Nginx.
+
+Variáveis opcionais: `SERVER_PORT` (padrão `8080`) e `JWT_EXPIRATION` em milissegundos (de `1` a `86400000`, padrão `86400000`). O SQL direto permanece desabilitado para evitar exposição de dados.
 
 A inicialização falha se `JWT_SECRET` estiver ausente, em branco ou tiver menos de 32 bytes UTF-8, ou se a duração JWT for inválida. A chave continua sendo texto UTF-8, sem decodificação Base64. Use um segredo aleatório; tamanho mínimo não garante entropia. O limite de 24 horas mantém o padrão existente e limita a validade de tokens sem revogação individual. Chaves maiores continuam selecionando o algoritmo HMAC adequado. Consulte as [decisões de atualização das dependências](docs/dependency-security.md).
 

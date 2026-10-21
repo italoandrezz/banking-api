@@ -146,7 +146,9 @@ jobs:
         id: startup
         timeout-minutes: 5
         shell: bash
-        run: docker compose up -d --no-build --wait --wait-timeout 180 > "$RUNNER_TEMP/startup.log" 2>&1
+        run: |
+          docker compose up -d --no-build --wait --wait-timeout 180 > "$RUNNER_TEMP/startup.log" 2>&1
+          node scripts/ci/verify-migrations.mjs
 
       - name: Test real HTTP financial flow
         id: smoke

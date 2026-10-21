@@ -21,21 +21,37 @@ services:
     restart: unless-stopped
     networks: [database]
 
+  migrate:
+    image: ${COMPOSE_PROJECT_NAME:-banking-api-service}-api
+    pull_policy: never
+    entrypoint: [java, '-Dloader.main=com.italo.bankingapi.migration.MigrationRunner', -cp, /app/app.jar, org.springframework.boot.loader.launch.PropertiesLauncher]
+    environment:
+      MIGRATION_DATABASE_URL: jdbc:postgresql://db:5432/${DB_NAME:-banking_db}?connectTimeout=5&socketTimeout=60
+      FLYWAY_USERNAME: ${FLYWAY_USERNAME:-banking_migrator}
+      FLYWAY_PASSWORD: ${FLYWAY_PASSWORD:?Set FLYWAY_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: 'no'
+    networks: [database]
+
   api:
+    image: ${COMPOSE_PROJECT_NAME:-banking-api-service}-api
     build: .
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/${DB_NAME:-banking_db}
       DATABASE_USERNAME: ${DB_USERNAME:-banking_app}
       DATABASE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-      FLYWAY_USERNAME: ${FLYWAY_USERNAME:-banking_migrator}
-      FLYWAY_PASSWORD: ${FLYWAY_PASSWORD:?Set FLYWAY_PASSWORD in .env}
+      SPRING_FLYWAY_ENABLED: 'false'
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
       SERVER_PORT: "8080"
       SHOW_SQL: "false"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks: [backend, database]
 

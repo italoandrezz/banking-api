@@ -82,7 +82,18 @@ class PostgresPrivilegesTest {
                 execute(app, "INSERT INTO accounts(id,customer_id,account_number,balance,status) VALUES ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','SECURITY',100.00,'ACTIVE')");
                 execute(app, "INSERT INTO transactions(id,account_id,type,amount) VALUES ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','DEPOSIT',100.00)");
             }
-            assertEquals(1, flyway(null).migrate().migrationsExecuted);
+            // Both processes encounter the V4 -> V5 upgrade; Flyway must serialize it.
+            var firstUpgrade = runner(Map.of());
+            var secondUpgrade = runner(Map.of());
+            try {
+                assertTrue(firstUpgrade.waitFor(60, TimeUnit.SECONDS));
+                assertTrue(secondUpgrade.waitFor(60, TimeUnit.SECONDS));
+                assertEquals(0, firstUpgrade.exitValue());
+                assertEquals(0, secondUpgrade.exitValue());
+            } finally {
+                if (firstUpgrade.isAlive()) firstUpgrade.destroyForcibly();
+                if (secondUpgrade.isAlive()) secondUpgrade.destroyForcibly();
+            }
             flyway(null).validate();
         } catch (Exception | AssertionError failure) {
             docker("rm", "-f", NAME);
@@ -94,6 +105,89 @@ class PostgresPrivilegesTest {
     static void cleanup() throws Exception {
         docker("rm", "-f", NAME);
         assertEquals("", docker("ps", "-aq", "--filter", "name=^/" + NAME + "$"));
+    }
+
+    @Test
+    void standaloneRunnerFailsSafelyAndPreservesHistory() throws Exception {
+        try (var migration = connect(MIGRATOR)) {
+            String history = scalar(migration, "SELECT string_agg(version || ':' || checksum, ',' ORDER BY installed_rank) FROM flyway_schema_history");
+            for (var override : java.util.List.of(Map.of("FLYWAY_PASSWORD", "wrong-synthetic-password"),
+                    Map.of("FLYWAY_USERNAME", ""), Map.of("MIGRATION_DATABASE_URL", "jdbc:postgresql://127.0.0.1:1/unavailable?connectTimeout=1"),
+                    Map.of("FLYWAY_USERNAME", ADMIN, "FLYWAY_PASSWORD", PASSWORDS.get(ADMIN)))) {
+                var process = runner(override);
+                assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+                assertEquals(1, process.exitValue());
+                String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                assertTrue(output.contains("migration_failed"));
+                assertFalse(output.contains("Exception"));
+                assertFalse(output.contains("jdbc:"));
+                assertFalse(output.contains("wrong-synthetic-password"));
+                for (String secret : PASSWORDS.values()) assertFalse(output.contains(secret));
+            }
+            assertEquals(history, scalar(migration, "SELECT string_agg(version || ':' || checksum, ',' ORDER BY installed_rank) FROM flyway_schema_history"));
+        }
+    }
+
+    @Test
+    void standaloneRunnerRejectsChecksumMismatchWithoutRepair() throws Exception {
+        try (var migration = connect(MIGRATOR)) {
+            String checksum = scalar(migration, "SELECT checksum FROM flyway_schema_history WHERE version='1'");
+            try {
+                execute(migration, "UPDATE flyway_schema_history SET checksum=0 WHERE version='1'");
+                var process = runner(Map.of());
+                assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+                assertEquals(1, process.exitValue());
+                assertEquals("0", scalar(migration, "SELECT checksum FROM flyway_schema_history WHERE version='1'"));
+                assertEquals("t", scalar(migration, "SELECT pg_try_advisory_lock(4774188638755047250)"));
+                execute(migration, "SELECT pg_advisory_unlock(4774188638755047250)");
+            } finally {
+                execute(migration, "UPDATE flyway_schema_history SET checksum=" + Integer.parseInt(checksum) + " WHERE version='1'");
+            }
+        }
+    }
+
+    @Test
+    void standaloneRunnerWaitsForTheWholeMigrationLock() throws Exception {
+        try (var admin = connect(ADMIN)) {
+            execute(admin, "SELECT pg_advisory_lock(4774188638755047250)");
+            var process = runner(Map.of());
+            try {
+                boolean waiting = false;
+                for (int attempt = 0; attempt < 120; attempt++) {
+                    waiting = !scalar(admin, "SELECT count(*) FROM pg_stat_activity WHERE usename='security_migrator' AND query LIKE 'SELECT pg_try_advisory_lock%'").equals("0");
+                    if (waiting || !process.isAlive()) break;
+                    Thread.sleep(250);
+                }
+                assertTrue(waiting, "Runner must wait before executing migrations or callbacks");
+                assertTrue(process.isAlive());
+                execute(admin, "SELECT pg_advisory_unlock(4774188638755047250)");
+                assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+                assertEquals(0, process.exitValue());
+            } finally {
+                if (process.isAlive()) process.destroyForcibly();
+            }
+        }
+    }
+
+    @org.junit.jupiter.api.RepeatedTest(5)
+    void concurrentStandaloneRunnersPreserveHistoryAndPermissions() throws Exception {
+        var first = runner(Map.of()); var second = runner(Map.of());
+        assertTrue(first.waitFor(60, TimeUnit.SECONDS));
+        assertTrue(second.waitFor(60, TimeUnit.SECONDS));
+        assertEquals(0, first.exitValue(), new String(first.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals(0, second.exitValue(), new String(second.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        upgradePreservesDataHistoryAndFinancialConstraints();
+        runtimeCannotAdministerOrChangeStructures();
+    }
+
+    private static Process runner(Map<String, String> overrides) throws Exception {
+        String java = Path.of(System.getProperty("java.home"), "bin", System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java").toString();
+        var builder = new ProcessBuilder(java, "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
+                "com.italo.bankingapi.migration.MigrationRunner").redirectErrorStream(true);
+        builder.environment().keySet().removeIf(key -> key.startsWith("FLYWAY_") || key.startsWith("DATABASE_") || key.startsWith("JWT_"));
+        builder.environment().putAll(Map.of("MIGRATION_DATABASE_URL", url, "FLYWAY_USERNAME", MIGRATOR, "FLYWAY_PASSWORD", PASSWORDS.get(MIGRATOR)));
+        builder.environment().putAll(overrides);
+        return builder.start();
     }
 
     @Test

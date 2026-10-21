@@ -4,8 +4,8 @@ O workflow `.github/workflows/ci.yml` executa em PRs para `develop` e `main`, al
 
 | Check | Validação |
 |---|---|
-| `build` | Java 17, PostgreSQL temporário e `./mvnw clean verify`: 316 testes Java (302 da Fase 3 e 14 de observabilidade) |
-| `Docker Compose validation` | 42 testes Node.js, imagem Docker, smoke HTTP do Compose e collection Postman |
+| `build` | Java 17, PostgreSQL temporário e `./mvnw clean verify`, incluindo o migrador independente |
+| `Docker Compose validation` | Testes Node.js, imagem Docker compartilhada API/migrador, smoke HTTP e collection Postman |
 
 ## Fluxo Docker e Postman
 
@@ -13,10 +13,10 @@ O workflow `.github/workflows/ci.yml` executa em PRs para `develop` e `main`, al
 2. Instalar Postman CLI 1.74.0 para Linux x64 com `scripts/ci/install-postman.sh`. O download oficial versionado precisa corresponder ao SHA-256 fixado no script. A versão do executável também é conferida.
 3. Gerar credenciais temporárias distintas para administrador, migrador e aplicação, além do JWT, mascaradas nos logs do Actions.
 4. Validar o Compose principal e construir a imagem uma única vez.
-5. Subir Nginx, API e PostgreSQL, aguardar healthchecks e executar o smoke de 15 requisições.
+5. Subir PostgreSQL, executar `migrate` até saída zero e iniciar API/Nginx; verificar imagem compartilhada e ausência de credenciais DDL no runtime com `scripts/ci/verify-migrations.mjs`; executar o smoke de 15 requisições.
 6. Remover containers, rede e volume desse projeto e verificar a ausência de recursos. Falhas de comando ou recursos remanescentes reprovam o job.
 7. Executar `node scripts/postman/run.mjs --image "$API_IMAGE_ID" --recovery`. O runner aceita somente um ID local imutável `sha256:...`, verifica sua existência e reutiliza a imagem sem build ou download da API. Não remove a imagem emprestada.
-8. Verificar os privilégios reais por conexão SQL autenticada e executar 185 requisições e 1047 assertions com usuário restrito em outro projeto Compose aleatório, com PostgreSQL em tmpfs, sem dados persistentes ou banco externo. O único bind permitido é o código de provisionamento, somente para leitura.
+8. Provar que uma migration com falha impede a API de iniciar; executar novamente com configuração válida; verificar isolamento de credenciais e privilégios reais por conexão SQL autenticada; executar 185 requisições e 1047 assertions com usuário restrito em outro projeto Compose aleatório, com PostgreSQL em tmpfs, sem dados persistentes ou banco externo. O único bind permitido é o código de provisionamento, somente para leitura.
 9. Limpar os recursos Postman e o diretório privado, inclusive em falhas tratáveis.
 10. Gerar e publicar somente os relatórios explicitamente permitidos.
 
