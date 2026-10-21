@@ -41,38 +41,41 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+        String token = authorizationHeader.substring(7);
+        UUID customerId;
         try {
-            String token = authorizationHeader.substring(7);
-            UUID customerId = jwtService.extractCustomerId(token);
-            Customer customer = customerRepository.findById(customerId)
-                    .orElse(null);
-            if (customer == null ||
-                    !jwtService.isTokenValid(token, customer.getId())) {
-                SecurityContextHolder.clearContext();
-                authenticationEntryPoint.commence(
-                        request,
-                        response,
-                        new BadCredentialsException("Invalid or expired token.")
-                );
-                return;
-            }
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(
-                            customer,
-                            null,
-                            List.of(new SimpleGrantedAuthority("ROLE_" + customer.getRole().name()))
-                    );
-            SecurityContextHolder.getContext()
-                    .setAuthentication(authentication);
+            customerId = jwtService.extractCustomerId(token);
         } catch (JwtException | IllegalArgumentException exception) {
-            SecurityContextHolder.clearContext();
-            authenticationEntryPoint.commence(
-                    request,
-                    response,
-                    new BadCredentialsException("Invalid or expired token.")
-            );
+            rejectToken(request, response);
             return;
         }
+        // Repository/programming failures must propagate as server errors, not invalid credentials.
+        Customer customer = customerRepository.findById(customerId).orElse(null);
+        boolean valid;
+        try {
+            valid = customer != null && jwtService.isTokenValid(token, customer.getId());
+        } catch (JwtException | IllegalArgumentException exception) {
+            rejectToken(request, response);
+            return;
+        }
+        if (!valid) {
+            rejectToken(request, response);
+            return;
+        }
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(
+                        customer,
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_" + customer.getRole().name()))
+                );
+        SecurityContextHolder.getContext().setAuthentication(authentication);
         filterChain.doFilter(request, response);
+    }
+
+    private void rejectToken(HttpServletRequest request, HttpServletResponse response)
+            throws IOException, ServletException {
+        SecurityContextHolder.clearContext();
+        authenticationEntryPoint.commence(request, response,
+                new BadCredentialsException("Invalid or expired token."));
     }
 }
