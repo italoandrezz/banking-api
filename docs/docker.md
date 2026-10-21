@@ -52,4 +52,12 @@ A suíte `mvnw clean verify` exige Java 17, um PostgreSQL dedicado aos testes an
 
 ## Sem Docker
 
-Provisione os usuários e permissões antes de iniciar o Java. Configure `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `FLYWAY_USERNAME`, `FLYWAY_PASSWORD` e `JWT_SECRET`. O Spring Boot não carrega `.env` automaticamente. Nunca execute com o administrador como datasource runtime. O profile `test` usa configurações próprias de fixtures e não deve ser ativado em produção.
+Provisione os usuários e permissões e execute o [migrador separado](migrations.md) antes de iniciar a API. Configure somente `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` e `JWT_SECRET` no runtime. O Spring Boot não carrega `.env` automaticamente. Nunca execute com o administrador como datasource runtime. O profile `test` usa configurações próprias de fixtures e não deve ser ativado em produção.
+
+## Serviço temporário de migrations
+
+O Compose usa quatro serviços: `db`, `migrate`, `api` e `nginx`. A API depende da
+saída zero do migrador, com a mesma imagem e sem herdar suas credenciais.
+Para atualizar volumes existentes, consulte o [procedimento de deploy e rollback](migrations.md).
+Um simples restart da API não executa migrations. O serviço `migrate` não publica
+portas, não monta o volume de dados e só participa da rede interna `database`.

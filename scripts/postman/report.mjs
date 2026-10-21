@@ -54,5 +54,6 @@ export function junitReport(summary) {
   const cases = executions.map(e => `<testcase classname="${escape(e.endpoint)}" name="${escape(e.name)}">${e.passed ? '' : '<failure type="AssertionOrRequestFailure" message="Unexpected status, script error or failed assertion; see summary.json"/>'}</testcase>`);
   cases.push(...issues.map(issue => `<testcase classname="Banking.Postman.Run" name="${issue}"><error type="RunError" message="${issue}; see summary.md"/></testcase>`));
   cases.push(...(summary.recovery?.checks || []).map(name => `<testcase classname="Banking.Recovery" name="${escape(name)}"/>`));
+  cases.push(...(summary.migrationChecks || []).map(name => `<testcase classname="Banking.Migrations" name="${escape(name)}"/>`));
   return `<?xml version="1.0" encoding="UTF-8"?><testsuite name="Banking API Postman" tests="${cases.length}" failures="${failures}" errors="${issues.length}">${cases.join('')}</testsuite>\n`;
 }

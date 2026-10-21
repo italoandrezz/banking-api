@@ -57,13 +57,13 @@ Investigue a origem da exposição antes de encerrar o incidente.
 - Administrador, migrador e aplicação usam credenciais distintas. O `.env` não
   altera automaticamente senhas de roles em volumes existentes; siga o
   [procedimento PostgreSQL](postgresql-security.md).
-- O processo Java ainda recebe as credenciais do Flyway e executa migrations na
-  inicialização. Secrets em variáveis dos containers continuam visíveis a quem
+- A API não recebe credenciais do Flyway. Elas ficam no bootstrap do banco e no
+  serviço temporário `migrate`. Secrets em variáveis dos containers continuam visíveis a quem
   administra o Docker. Evite publicar saídas de `docker inspect` ou de
   `docker compose config` sem sanitização.
 - A chave fixa e as credenciais de fixtures pertencem exclusivamente aos testes.
   Não as reutilize em produção. O profile `prod` desabilita documentação, mas não
-  fornece um gerenciador de secrets nem separa o Flyway.
+  fornece um gerenciador de secrets. Flyway é separado independentemente do profile.
 - Para ativar `prod`, o profile deve chegar ao processo Spring. Adicionar
   `SPRING_PROFILES_ACTIVE` somente ao `.env` não o transmite automaticamente pelo
   Compose atual, que não declara essa variável. Configuração de implantação
@@ -84,7 +84,7 @@ Novos usos de XSLT/views/SSE também exigem revisão antes do prazo.
 
 ## Fase 4.3 — Flyway fora do runtime
 
-Proposta pendente de implementação:
+Implementação operacional descrita no [guia de migrations](migrations.md):
 
 - Executar migrations em processo temporário separado, com identidade migradora
   sem SUPERUSER e acesso ao histórico Flyway.
@@ -98,8 +98,9 @@ Proposta pendente de implementação:
   modificar migrations antigas nem apagar volumes. Ensaiar recuperação com o
   [procedimento de backup/restauração](recovery.md) antes de atuar em dados reais.
 
-Até essa etapa ser implementada, o risco de exposição das credenciais DDL por
-comprometimento da API permanece.
+A separação reduz o impacto de comprometimento da API. Administradores Docker e
+o processo de provisionamento ainda têm acesso aos segredos; remover o container
+encerrado do migrador reduz sua retenção, sem substituir a Fase 4.4.
 
 ## Fase 4.4 — Gestão de secrets
 

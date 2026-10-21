@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sanitizedReport, junitReport } from './report.mjs';
 import { verifyRecovery } from './recovery.mjs';
+import { verifyMigrationIsolation } from './migration-isolation.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const inputArgs = process.argv.slice(2);
@@ -107,8 +108,9 @@ async function saveReports() {
   const latest = path.join(root, 'target/postman/latest');
   await mkdir(latest, { recursive: true });
   for (const [filename, content] of Object.entries({ 'summary.json': JSON.stringify(summary, null, 2) + '\n', 'summary.md': markdown + recoveryMarkdown, 'report.html': html, 'junit.xml': junit })) {
-    await writeFile(path.join(outputDir, filename), content);
-    await writeFile(path.join(latest, filename), content);
+    const value = filename === 'summary.md' ? content + '\n## Migration isolation\n\n' + (summary.migrationChecks || []).map(name => '- PASS: ' + name).join('\n') + '\n' : content;
+    await writeFile(path.join(outputDir, filename), value);
+    await writeFile(path.join(latest, filename), value);
   }
 }
 
@@ -132,16 +134,39 @@ try {
     console.log('Building test API image...');
     await compose(['build'], { timeout: 900_000 });
   }
+  // Unique tmpfs stack: prove the dependency gate before creating any fixtures.
+  stage = 'migration-failure-gate';
+  await compose(['up', '-d', '--wait', '--wait-timeout', '90', 'db']);
+  const failingMigration = path.join(privateDir, 'migration-failure.json');
+  await writeFile(failingMigration, JSON.stringify({ services: { migrate: { environment: {
+    FLYWAY_PASSWORD: randomBytes(32).toString('hex')
+  } } } }), { mode: 0o600 });
+  const gate = await command('docker', [...composeArgs, '-f', failingMigration,
+    'up', '-d', '--no-build', '--wait', '--wait-timeout', '60', 'api'], { allowFailure: true });
+  if (gate.code === 0) throw new Error('Failed migration did not block startup');
+  if ((await compose(['ps', '--status', 'running', '-q', 'api'])).stdout.trim())
+    throw new Error('API started despite failed migration');
+  const failedId = (await compose(['ps', '--all', '-q', 'migrate'])).stdout.trim();
+  const failedState = JSON.parse((await command('docker', ['inspect', failedId])).stdout)[0];
+  if (failedState.State.Status !== 'exited' || failedState.State.ExitCode !== 1)
+    throw new Error('Expected migration process failure was not observed');
+  await compose(['rm', '-f', 'api', 'migrate']);
+  summary.migrationChecks = ['Failed migration prevents API startup'];
+  console.log('Failed migration blocks API startup: verified.');
   stage = 'startup';
-  console.log('Starting disposable PostgreSQL and API...');
+  console.log('Starting disposable PostgreSQL, migrator and API...');
   await compose(['up', '-d', '--no-build', '--wait', '--wait-timeout', '180'], { timeout: 210_000 });
-  const serviceJson = (await compose(['ps', '--format', 'json'])).stdout.trim();
+  const serviceJson = (await compose(['ps', '--all', '--format', 'json'])).stdout.trim();
   const services = serviceJson.startsWith('[') ? JSON.parse(serviceJson)
     : serviceJson.split('\n').filter(Boolean).map(line => JSON.parse(line));
-  if (services.length !== 2 || services.some(s => s.Project !== project)) throw new Error('Unexpected Compose services');
+  if (services.length !== 3 || services.some(s => s.Project !== project)) throw new Error('Unexpected Compose services');
   const apiId = (await compose(['ps', '-q', 'api'])).stdout.trim();
   const dbId = (await compose(['ps', '-q', 'db'])).stdout.trim();
-  const inspection = JSON.parse((await command('docker', ['inspect', apiId, dbId])).stdout);
+  const migrateId = (await compose(['ps', '--all', '-q', 'migrate'])).stdout.trim();
+  const inspection = JSON.parse((await command('docker', ['inspect', apiId, dbId, migrateId])).stdout);
+  verifyMigrationIsolation(inspection[2], [inspection[0]]);
+  summary.migrationChecks.push('Standalone migrator completed using the same image', 'API has no DDL credentials');
+  console.log('Standalone migration completed; same image and runtime credential isolation verified.');
   if (inspection.some(c => c.Config.Labels['banking.test-suite'] !== 'postman' || c.Config.Labels['com.docker.compose.project'] !== project)) throw new Error('Isolation label verification failed');
   // The sole permitted bind is the read-only provisioning code, never database data.
   if (inspection.some(c => c.Mounts.some(m => m.Type === 'volume' || (m.Type === 'bind' &&

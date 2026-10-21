@@ -5,6 +5,16 @@ import { collection } from './build-collection.mjs';
 import { sanitizedReport, junitReport } from './report.mjs';
 import { hasSensitiveFields } from './sensitive-fields.mjs';
 
+test('JUnit records completed migration isolation checks separately from HTTP requests', () => {
+  const xml = junitReport({ success: true, requests: 0, executions: [], cleanup: true,
+    migrationChecks: ['Migration gate', 'Same image', 'No DDL credentials'] });
+  assert.match(xml, /tests="3" failures="0" errors="0"/);
+  assert.equal((xml.match(/classname="Banking.Migrations"/g) || []).length, 3);
+  const failed = junitReport({ success: false, requests: 0, executions: [], cleanup: true,
+    infrastructureFailure: 'migration-failure-gate', migrationChecks: [] });
+  assert.match(failed, /errors="1"/);
+});
+
 test('Sensitive fields are rejected regardless of JSON whitespace and escaped property names', () => {
   for (const text of ['{"password":"synthetic"}', '{ "password" : "synthetic" }', '{\n "passwordHash"\t:\n null\n}', '{"pass\\u0077ord":"synthetic"}']) {
     assert.equal(hasSensitiveFields(JSON.parse(text)), true);

@@ -157,7 +157,7 @@ export async function verifyRecovery({ command, compose, dbId, baseUrl, testEnv,
       // A second instance reads only the new restored database. No migrations run.
       await compose(['run', '--detach', '--no-deps', '--name', restoredApi, '--publish', '127.0.0.1::8080',
         '-e', `DATABASE_URL=jdbc:postgresql://db:5432/${restored}`, '-e', 'SPRING_FLYWAY_ENABLED=false',
-        '-e', 'FLYWAY_USERNAME=', '-e', 'FLYWAY_PASSWORD=', 'api']);
+        'api']);
       baseUrl = await discoverHealthyApi(async () => command('docker', ['port', restoredApi, '8080/tcp']));
       token = (await request('POST', '/auth/login', { email, password })).token;
       const restoredAccount = await request('GET', `/accounts/${account.id}`);

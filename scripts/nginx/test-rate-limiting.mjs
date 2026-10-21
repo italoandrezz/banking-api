@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
+import { verifyMigrationIsolation } from '../postman/migration-isolation.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const project = 'banking-rate-' + randomBytes(8).toString('hex');
@@ -77,7 +78,7 @@ try {
   await writeFile(empty, '');
   const raw = await docker(['compose', '--env-file', empty, '-p', project, '-f', 'compose.yaml', 'config', '--format', 'json']);
   config = JSON.parse(raw.stdout);
-  assert.deepEqual(Object.keys(config.services).sort(), ['api', 'db', 'nginx']);
+  assert.deepEqual(Object.keys(config.services).sort(), ['api', 'db', 'migrate', 'nginx']);
   assert.ok(!config.services.api.ports && !config.services.db.ports);
   assert.equal(config.services.db.volumes.filter(v => v.target === '/var/lib/postgresql/data').length, 1);
   config.services.db.volumes = config.services.db.volumes.filter(v => v.target !== '/var/lib/postgresql/data');
@@ -85,6 +86,7 @@ try {
   config.services.db.tmpfs = ['/var/lib/postgresql/data'];
   config.volumes = {};
   config.services.api.image = image;
+  config.services.migrate.image = image;
   config.services.nginx.image = project + '-nginx';
   for (const service of Object.values(config.services)) {
     service.restart = 'no'; service.labels = { ...service.labels, 'banking.test-suite': 'rate-limiting' };
@@ -97,6 +99,9 @@ try {
   assert.match(binding, /^127\.0\.0\.1:\d+$/);
   const apiIds = (await compose(['ps', '-q', 'api'])).stdout.trim().split(/\s+/);
   assert.equal(apiIds.length, 2);
+  const migrateId = (await compose(['ps', '--all', '-q', 'migrate'])).stdout.trim();
+  const inspected = JSON.parse((await docker(['inspect', migrateId, ...apiIds])).stdout);
+  verifyMigrationIsolation(inspected[0], inspected.slice(1));
   for (const client of clients) await docker(['run', '-d', '--name', client, '--label', 'banking.test-suite=rate-limiting',
     '--network', project + '_edge', '--entrypoint', 'sleep', image, '900']);
 

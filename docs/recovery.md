@@ -107,18 +107,15 @@ Referências: [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html),
 [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html) e
 [papéis e volumes existentes](postgresql-security.md).
 
-## Proposta: separar o Flyway do runtime
+## Flyway separado do runtime
 
-O Compose normal ainda fornece credenciais do migrador ao processo Java, embora o
-datasource de runtime seja DML. A proposta é um serviço temporário `migrate`, usando
-a mesma versão do Flyway e as mesmas migrations/callbacks, que termina antes da API.
-A API dependeria de `service_completed_successfully`, receberia somente a identidade
-de aplicação e teria `SPRING_FLYWAY_ENABLED=false`.
+A Fase 4.3 utiliza `migrate`, um processo temporário na mesma imagem da API, sem
+contexto Spring. O Compose principal tem quatro serviços (com Nginx); o ambiente
+Postman tem três. A API depende de `service_completed_successfully`, usa somente
+a identidade DML e tem `SPRING_FLYWAY_ENABLED=false`.
 
-Isso exige um entrypoint/perfil dedicado, mudança de dois para três serviços,
-ajustes nos runners que hoje verificam exatamente dois containers e revisão dos
-procedimentos para volumes existentes. Uma falha de migration deve impedir a API
-de iniciar; volumes antigos não podem ser adaptados silenciosamente. Por esse impacto,
-a separação permanece proposta e depende de autorização arquitetural específica.
-O ensaio contra a cópia restaurada demonstra que a API funciona sem migrations,
-mas não substitui a implementação e validação desse novo fluxo de provisionamento.
+O ensaio de recuperação inicia a API da cópia restaurada com `--no-deps`, sem
+reaplicar migrations e sem variáveis DDL. Primeiro restaure e valide com a mesma
+versão. Atualizar o schema restaurado requer outra etapa explícita, com backup,
+checagem de histórico e janela operacional. Consulte [deploy, migrations e rollback](migrations.md).
+Nenhum volume existente é adaptado automaticamente por essa separação.
