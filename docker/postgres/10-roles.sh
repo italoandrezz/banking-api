@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 # Executed by the official entrypoint ONLY when PGDATA is empty.
 set -euo pipefail
+# File sources are optional only for explicit legacy test/local provisioning.
+for name in DATABASE_PASSWORD FLYWAY_PASSWORD; do
+  file_name="${name}_FILE"
+  if [[ -v "$file_name" ]]; then
+    [[ ! -v "$name" && -f "${!file_name}" && -r "${!file_name}" ]] || { echo 'Invalid secret source'; exit 1; }
+    size=$(wc -c < "${!file_name}")
+    [[ "$size" -gt 0 && "$size" -le 4096 ]] || { echo 'Invalid secret size'; exit 1; }
+    # The operational format is a single line with no newline or BOM.
+    [[ $(LC_ALL=C tr -d '\000-\037\177' < "${!file_name}" | wc -c) -eq "$size" ]] || { echo 'Invalid secret format'; exit 1; }
+    value=$(cat -- "${!file_name}")
+    [[ "$value" != $'\xef\xbb\xbf'* && -n "${value//[[:space:]]/}" ]] || { echo 'Invalid secret format'; exit 1; }
+    printf -v "$name" '%s' "$value"
+    export "$name"
+    unset value
+  fi
+done
 : "${DATABASE_USERNAME:?}" "${DATABASE_PASSWORD:?}" "${FLYWAY_USERNAME:?}" "${FLYWAY_PASSWORD:?}"
 for role in "$POSTGRES_USER" "$DATABASE_USERNAME" "$FLYWAY_USERNAME"; do
   [[ "$role" =~ ^[a-z][a-z0-9_]{0,62}$ ]] || { echo 'Invalid database role name'; exit 1; }
@@ -27,3 +43,4 @@ SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE EXECUTE ON FUNCTIONS 
 SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE USAGE ON TYPES FROM PUBLIC', :'migration_user') \gexec
 COMMIT;
 SQL
+unset DATABASE_PASSWORD FLYWAY_PASSWORD

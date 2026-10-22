@@ -5,6 +5,12 @@ import { collection } from './build-collection.mjs';
 import { sanitizedReport, junitReport } from './report.mjs';
 import { hasSensitiveFields } from './sensitive-fields.mjs';
 
+test('Secret rotation checks are distinct JUnit cases and incomplete rotation remains an error', () => {
+  const summary = { success: true, requests: 0, executions: [], cleanup: true, secretChecks: ['JWT rotation', 'DML rotation'] };
+  assert.match(junitReport(summary), /tests="2" failures="0" errors="0"/);
+  assert.match(junitReport({ ...summary, success: false, infrastructureFailure: 'secret-rotation' }), /errors="1"/);
+});
+
 test('JUnit records completed migration isolation checks separately from HTTP requests', () => {
   const xml = junitReport({ success: true, requests: 0, executions: [], cleanup: true,
     migrationChecks: ['Migration gate', 'Same image', 'No DDL credentials'] });

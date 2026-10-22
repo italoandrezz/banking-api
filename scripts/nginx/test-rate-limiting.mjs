@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { verifyMigrationIsolation } from '../postman/migration-isolation.mjs';
+import { writeTestSecrets, verifySecretMounts } from '../postman/secret-files.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const project = 'banking-rate-' + randomBytes(8).toString('hex');
@@ -75,6 +76,9 @@ async function profile(values) {
 }
 
 try {
+  env.SECRETS_DIR = path.join(privateDir, 'secrets');
+  await writeTestSecrets(env.SECRETS_DIR, { admin_password: env.DB_ADMIN_PASSWORD, app_password: env.DB_PASSWORD,
+    migrator_password: env.FLYWAY_PASSWORD, jwt_secret: env.JWT_SECRET });
   await writeFile(empty, '');
   const raw = await docker(['compose', '--env-file', empty, '-p', project, '-f', 'compose.yaml', 'config', '--format', 'json']);
   config = JSON.parse(raw.stdout);
@@ -102,6 +106,9 @@ try {
   const migrateId = (await compose(['ps', '--all', '-q', 'migrate'])).stdout.trim();
   const inspected = JSON.parse((await docker(['inspect', migrateId, ...apiIds])).stdout);
   verifyMigrationIsolation(inspected[0], inspected.slice(1));
+  const dbId = (await compose(['ps', '-q', 'db'])).stdout.trim();
+  verifySecretMounts(JSON.parse((await docker(['inspect', dbId])).stdout)[0],
+    ['/run/secrets/admin_password', '/run/secrets/app_password', '/run/secrets/migrator_password']);
   for (const client of clients) await docker(['run', '-d', '--name', client, '--label', 'banking.test-suite=rate-limiting',
     '--network', project + '_edge', '--entrypoint', 'sleep', image, '900']);
 

@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyMigrationIsolation } from './migration-isolation.mjs';
 const fixture = () => ({ migrator: { Image: 'same-image', State: { Status: 'exited', ExitCode: 0 },
-  Config: { Env: ['FLYWAY_USERNAME=migrator', 'FLYWAY_PASSWORD=synthetic-secret', 'MIGRATION_DATABASE_URL=jdbc:postgresql://db/test'] } },
-  api: { Image: 'same-image', Config: { Env: ['SPRING_FLYWAY_ENABLED=false', 'DATABASE_PASSWORD=synthetic-runtime'] } } });
+  Mounts: [{ Destination: '/run/secrets/migrator_password', Type: 'bind', RW: false }],
+  Config: { Env: ['FLYWAY_USERNAME=migrator', 'FLYWAY_PASSWORD_FILE=/run/secrets/migrator_password', 'MIGRATION_DATABASE_URL=jdbc:postgresql://db/test'] } },
+  api: { Image: 'same-image', Mounts: ['spring.datasource.password', 'jwt.secret'].map(name => ({ Destination: '/run/secrets/' + name, Type: 'bind', RW: false })),
+    Config: { Env: ['SPRING_FLYWAY_ENABLED=false', 'BANKING_SECRETS_DIRECTORY=/run/secrets/', 'SPRING_CONFIG_IMPORT=configtree:/run/secrets/'] } } });
 test('completed migrator shares image without sharing DDL credentials', () => {
   const { migrator, api } = fixture(); verifyMigrationIsolation(migrator, [api, api]);
 });
@@ -16,7 +18,7 @@ test('running, failed and missing migrator fail closed', () => {
 });
 test('runtime rejects DDL variables including empty values and aliased secrets', () => {
   for (const value of ['FLYWAY_PASSWORD=', 'FLYWAY_USERNAME=migrator', 'SPRING_FLYWAY_PASSWORD=synthetic-secret',
-    'MIGRATION_DATABASE_URL=jdbc:postgresql://db', 'OTHER=synthetic-secret']) {
+    'MIGRATION_DATABASE_URL=jdbc:postgresql://db', 'JWT_SECRET=synthetic-secret']) {
     const { migrator, api } = fixture(); api.Config.Env.push(value);
     assert.throws(() => verifyMigrationIsolation(migrator, [api]), error => !error.message.includes('synthetic-secret'));
   }

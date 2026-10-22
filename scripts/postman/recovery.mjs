@@ -51,7 +51,7 @@ export async function verifyRecovery({ command, compose, dbId, baseUrl, testEnv,
   const checks = [];
   const require = condition => { if (!condition) throw new RecoveryAssertionError(); };
   const sql = async (query, db = database, runtime = false, allowFailure = false) => {
-    const result = await command('docker', ['exec', '-i', '-e', 'PGPASSWORD', dbId, 'psql', '-X', '-h', '127.0.0.1',
+    const result = await command('docker', ['exec', '-i', '-e', 'PGPASSWORD', dbId, 'psql', '-X', '-h', 'db',
       '-U', runtime ? 'postman_test' : 'postman_admin', '-d', db, '-At', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose'], {
       input: query, allowFailure,
       env: { ...testEnv, PGPASSWORD: runtime ? testEnv.POSTMAN_TEST_DB_PASSWORD : testEnv.POSTMAN_TEST_ADMIN_PASSWORD }

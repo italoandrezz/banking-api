@@ -21,8 +21,8 @@ de volumes existentes e rollback.
 
 ## Banco novo
 
-Preencha `.env` a partir de `.env.example` com senhas distintas e aleatórias:
-`DB_ADMIN_PASSWORD`, `FLYWAY_PASSWORD`, `DB_PASSWORD` e `JWT_SECRET`.
+Configure `SECRETS_DIR` no `.env` e prepare senhas distintas nos arquivos privados
+descritos no [guia de secrets](secrets.md). O Compose não recebe seus valores no ambiente.
 Nomes dos três usuários devem ser distintos e seguir `[a-z][a-z0-9_]{0,62}`.
 O nome do banco é definido por `DB_NAME`.
 

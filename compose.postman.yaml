@@ -5,11 +5,12 @@ services:
     environment:
       POSTGRES_DB: banking_postman_test
       POSTGRES_USER: postman_admin
-      POSTGRES_PASSWORD: ${POSTMAN_TEST_ADMIN_PASSWORD:?Use scripts/Test-Postman.ps1}
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
       DATABASE_USERNAME: postman_test
-      DATABASE_PASSWORD: ${POSTMAN_TEST_DB_PASSWORD:?Use scripts/Test-Postman.ps1}
+      DATABASE_PASSWORD_FILE: /run/secrets/app_password
       FLYWAY_USERNAME: postman_migrator
-      FLYWAY_PASSWORD: ${POSTMAN_TEST_MIGRATOR_PASSWORD:?Use scripts/Test-Postman.ps1}
+      FLYWAY_PASSWORD_FILE: /run/secrets/migrator_password
+    secrets: [admin_password, app_password, migrator_password]
     volumes:
       - ./docker/postgres:/docker-entrypoint-initdb.d:ro
     tmpfs:
@@ -22,13 +23,14 @@ services:
     labels:
       banking.test-suite: postman
   migrate:
+    secrets: [migrator_password]
     image: ${POSTMAN_TEST_API_IMAGE:-${COMPOSE_PROJECT_NAME}-api}
     pull_policy: never
     entrypoint: [java, '-Dloader.main=com.italo.bankingapi.migration.MigrationRunner', -cp, /app/app.jar, org.springframework.boot.loader.launch.PropertiesLauncher]
     environment:
       MIGRATION_DATABASE_URL: jdbc:postgresql://db:5432/banking_postman_test?connectTimeout=2&socketTimeout=30
       FLYWAY_USERNAME: postman_migrator
-      FLYWAY_PASSWORD: ${POSTMAN_TEST_MIGRATOR_PASSWORD:?Use scripts/Test-Postman.ps1}
+      FLYWAY_PASSWORD_FILE: /run/secrets/migrator_password
     depends_on:
       db:
         condition: service_healthy
@@ -38,6 +40,11 @@ services:
     labels:
       banking.test-suite: postman
   api:
+    secrets:
+      - source: app_password
+        target: spring.datasource.password
+      - source: jwt_secret
+        target: jwt.secret
     image: ${POSTMAN_TEST_API_IMAGE:-${COMPOSE_PROJECT_NAME}-api}
     pull_policy: never
     build: .
@@ -45,9 +52,9 @@ services:
       DATABASE_URL: jdbc:postgresql://db:5432/banking_postman_test?connectTimeout=2&socketTimeout=3
       SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: '3000'
       DATABASE_USERNAME: postman_test
-      DATABASE_PASSWORD: ${POSTMAN_TEST_DB_PASSWORD:?Use scripts/Test-Postman.ps1}
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      BANKING_SECRETS_DIRECTORY: /run/secrets/
       SPRING_FLYWAY_ENABLED: 'false'
-      JWT_SECRET: ${POSTMAN_TEST_JWT_SECRET:?Use scripts/Test-Postman.ps1}
       JWT_EXPIRATION: '86400000'
       SERVER_PORT: '8080'
       SHOW_SQL: 'false'
@@ -58,3 +65,13 @@ services:
         condition: service_completed_successfully
     labels:
       banking.test-suite: postman
+
+secrets:
+  admin_password:
+    file: ${POSTMAN_TEST_SECRETS_DIR:?Set secrets directory}/admin_password
+  app_password:
+    file: ${POSTMAN_TEST_SECRETS_DIR:?Set secrets directory}/app_password
+  migrator_password:
+    file: ${POSTMAN_TEST_SECRETS_DIR:?Set secrets directory}/migrator_password
+  jwt_secret:
+    file: ${POSTMAN_TEST_SECRETS_DIR:?Set secrets directory}/jwt_secret
