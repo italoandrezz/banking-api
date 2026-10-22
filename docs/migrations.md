@@ -11,7 +11,7 @@ Não há dependência nova nem alteração nas migrations V1–V5 ou no callback
 - `db`: provisiona três papéis somente quando o volume está vazio. Conserva as
   credenciais de bootstrap; não altera senhas de um volume existente.
 - `migrate`: recebe somente `MIGRATION_DATABASE_URL`, `FLYWAY_USERNAME` e
-  `FLYWAY_PASSWORD`. Conecta ao schema `public` como proprietário não superusuário.
+  `FLYWAY_PASSWORD_FILE`, com montagem exclusiva da senha. Conecta ao schema `public` como proprietário não superusuário.
   Valida checksums, aplica migrations e executa o callback de permissões.
 - `api`: recebe somente credenciais DML e JWT; `SPRING_FLYWAY_ENABLED=false`,
   Hibernate `ddl-auto=validate`. Não recebe variáveis do migrador nem administrador.
@@ -26,7 +26,7 @@ ficam desativados. O runner não aceita argumentos como `repair` ou `clean`.
 
 ## Operação em banco novo
 
-Configure `.env` sem segredos versionados e execute:
+Configure `.env` com `SECRETS_DIR` e prepare os [arquivos privados](secrets.md), então execute:
 
 ```powershell
 docker compose config --quiet
@@ -72,10 +72,10 @@ de deploy nem compatibilidade de schema entre releases. Consulte a documentaçã
 de [advisory locks PostgreSQL](https://www.postgresql.org/docs/17/explicit-locking.html#ADVISORY-LOCKS).
 Não use `down --volumes`, `clean`, nem modifique migrations aplicadas.
 
-Containers encerrados continuam visíveis ao administrador Docker, inclusive seu
-ambiente. Após coletar evidência de saída zero e iniciar a API, pode-se remover
+Containers encerrados continuam visíveis ao administrador Docker, inclusive suas
+montagens de secrets. Após coletar evidência de saída zero e iniciar a API, pode-se remover
 somente `migrate` com `docker compose rm -f migrate`. Um próximo `up` o executará
-novamente; restart da API não o executa. Gestão externa de secrets é Fase 4.4.
+novamente; restart da API não o executa. Secrets por arquivo e limites de acesso estão no [guia da Fase 4.4](secrets.md).
 
 ## Sem Compose
 

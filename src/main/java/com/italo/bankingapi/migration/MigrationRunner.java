@@ -87,7 +87,7 @@ public final class MigrationRunner {
     static Settings settings(Map<String, String> environment) {
         String url = required(environment, "MIGRATION_DATABASE_URL");
         String username = required(environment, "FLYWAY_USERNAME");
-        String password = required(environment, "FLYWAY_PASSWORD");
+        String password = com.italo.bankingapi.config.secrets.SecretFiles.resolve(environment, "FLYWAY_PASSWORD");
         if (!url.startsWith("jdbc:postgresql://") || !username.matches("[a-z_][a-z0-9_]{0,62}")) {
             throw new IllegalArgumentException("Invalid migration connection configuration");
         }

@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sanitizedReport, junitReport } from './report.mjs';
-import { verifyRecovery } from './recovery.mjs';
+import { verifyRecovery, discoverHealthyApi } from './recovery.mjs';
 import { verifyMigrationIsolation } from './migration-isolation.mjs';
+import { writeTestSecrets, verifySecretMounts, isTestSecretBind } from './secret-files.mjs';
+import { verifySecretRotation } from './secret-rotation.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const inputArgs = process.argv.slice(2);
@@ -108,13 +110,16 @@ async function saveReports() {
   const latest = path.join(root, 'target/postman/latest');
   await mkdir(latest, { recursive: true });
   for (const [filename, content] of Object.entries({ 'summary.json': JSON.stringify(summary, null, 2) + '\n', 'summary.md': markdown + recoveryMarkdown, 'report.html': html, 'junit.xml': junit })) {
-    const value = filename === 'summary.md' ? content + '\n## Migration isolation\n\n' + (summary.migrationChecks || []).map(name => '- PASS: ' + name).join('\n') + '\n' : content;
+    const value = filename === 'summary.md' ? content + '\n## Migration isolation and secret rotation\n\n' + [...(summary.migrationChecks || []), ...(summary.secretChecks || [])].map(name => '- PASS: ' + name).join('\n') + '\n' : content;
     await writeFile(path.join(outputDir, filename), value);
     await writeFile(path.join(latest, filename), value);
   }
 }
 
 try {
+  testEnv.POSTMAN_TEST_SECRETS_DIR = path.join(privateDir, 'secrets');
+  await writeTestSecrets(testEnv.POSTMAN_TEST_SECRETS_DIR, { admin_password: testEnv.POSTMAN_TEST_ADMIN_PASSWORD,
+    app_password: dbPassword, migrator_password: testEnv.POSTMAN_TEST_MIGRATOR_PASSWORD, jwt_secret: jwtSecret });
   const cli = await findCli();
   summary.cliVersion = cli.version;
   const help = await command(cli.program, ['collection', 'run', '--help']);
@@ -139,7 +144,7 @@ try {
   await compose(['up', '-d', '--wait', '--wait-timeout', '90', 'db']);
   const failingMigration = path.join(privateDir, 'migration-failure.json');
   await writeFile(failingMigration, JSON.stringify({ services: { migrate: { environment: {
-    FLYWAY_PASSWORD: randomBytes(32).toString('hex')
+    FLYWAY_PASSWORD_FILE: '/run/secrets/missing'
   } } } }), { mode: 0o600 });
   const gate = await command('docker', [...composeArgs, '-f', failingMigration,
     'up', '-d', '--no-build', '--wait', '--wait-timeout', '60', 'api'], { allowFailure: true });
@@ -165,19 +170,23 @@ try {
   const migrateId = (await compose(['ps', '--all', '-q', 'migrate'])).stdout.trim();
   const inspection = JSON.parse((await command('docker', ['inspect', apiId, dbId, migrateId])).stdout);
   verifyMigrationIsolation(inspection[2], [inspection[0]]);
+  verifySecretMounts(inspection[1], ['/run/secrets/admin_password', '/run/secrets/app_password', '/run/secrets/migrator_password']);
+  if ([dbPassword, jwtSecret, testEnv.POSTMAN_TEST_ADMIN_PASSWORD, testEnv.POSTMAN_TEST_MIGRATOR_PASSWORD]
+    .some(secret => JSON.stringify(inspection).includes(secret))) throw new Error('Secret value exposed in container metadata');
   summary.migrationChecks.push('Standalone migrator completed using the same image', 'API has no DDL credentials');
   console.log('Standalone migration completed; same image and runtime credential isolation verified.');
   if (inspection.some(c => c.Config.Labels['banking.test-suite'] !== 'postman' || c.Config.Labels['com.docker.compose.project'] !== project)) throw new Error('Isolation label verification failed');
-  // The sole permitted bind is the read-only provisioning code, never database data.
+  // Only provisioning code and this run's exact read-only secret files may be bound.
   if (inspection.some(c => c.Mounts.some(m => m.Type === 'volume' || (m.Type === 'bind' &&
-    !(c.Id === dbId && m.Destination === '/docker-entrypoint-initdb.d' && !m.RW))))) throw new Error('Persistent data mounts are forbidden');
+    !(c.Id === dbId && m.Destination === '/docker-entrypoint-initdb.d' && !m.RW)
+    && !isTestSecretBind(m, testEnv.POSTMAN_TEST_SECRETS_DIR))))) throw new Error('Persistent data mounts are forbidden');
   const port = (await compose(['port', 'api', '8080'])).stdout.trim();
   if (!/^127\.0\.0\.1:\d+$/.test(port)) throw new Error('Unexpected API binding');
   const baseUrl = 'http://' + port;
   if (args.has('--simulate-failure')) { stage = 'simulated-failure'; throw new Error('Intentional failure to verify cleanup'); }
   stage = 'database-privileges';
   const privilegeResult = await command('docker', ['exec', '-i', '-e', 'PGPASSWORD', dbId,
-    'psql', '-X', '-h', '127.0.0.1', '-U', 'postman_test', '-d', 'banking_postman_test', '-At', '-v', 'ON_ERROR_STOP=1'], {
+    'psql', '-X', '-h', 'db', '-U', 'postman_test', '-d', 'banking_postman_test', '-At', '-v', 'ON_ERROR_STOP=1'], {
     env: { ...testEnv, PGPASSWORD: dbPassword },
     input: `SELECT current_user = 'postman_test'
       AND NOT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)
@@ -226,9 +235,17 @@ try {
       onStage: name => { stage = 'recovery-' + name; console.log('Validating ' + stage + '...'); } });
     console.log(`${summary.recovery.checks.length} recovery checks passed; restored data and privileges verified.`);
   }
+  if (summary.success) {
+    stage = 'secret-rotation';
+    summary.secretChecks = await verifySecretRotation({ command, compose, dbId, directory: testEnv.POSTMAN_TEST_SECRETS_DIR,
+      email: adminEmail, password: adminPassword, customerId: admin.id, oldDbPassword: dbPassword, testEnv,
+      onStage: name => { stage = 'secret-rotation-' + name; console.log('Validating ' + stage + '...'); } });
+    console.log('JWT and PostgreSQL rotation verified in isolated database.');
+  }
   if (args.has('--interactive') && summary.success) {
     await saveReports();
-    console.log(`Inspection window: ${baseUrl}; isolationId=${project}. Ctrl+C ends it; automatic cleanup after 10 minutes.`);
+    const interactiveUrl = await discoverHealthyApi(compose);
+    console.log(`Inspection window: ${interactiveUrl}; isolationId=${project}. Ctrl+C ends it; automatic cleanup after 10 minutes.`);
     console.log('Import only the blank environment template into the extension. CLI reports are in target/postman/latest.');
     await new Promise(resolve => { const timer = setTimeout(resolve, 600_000); releaseInteractive = () => { clearTimeout(timer); resolve(); }; });
   }

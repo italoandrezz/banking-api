@@ -105,20 +105,10 @@ jobs:
         id: install
         run: bash scripts/ci/install-postman.sh
 
-      - name: Generate temporary environment secrets
+      - name: Generate private temporary secret files
         id: environment
         shell: bash
-        run: |
-          db_password=$(openssl rand -hex 32)
-          admin_password=$(openssl rand -hex 32)
-          migrator_password=$(openssl rand -hex 32)
-          jwt_secret=$(openssl rand -hex 32)
-          echo "::add-mask::$db_password"
-          echo "::add-mask::$admin_password"
-          echo "::add-mask::$migrator_password"
-          echo "::add-mask::$jwt_secret"
-          printf 'DB_PASSWORD=%s\nJWT_SECRET=%s\n' "$db_password" "$jwt_secret" >> "$GITHUB_ENV"
-          printf 'DB_ADMIN_PASSWORD=%s\nFLYWAY_PASSWORD=%s\n' "$admin_password" "$migrator_password" >> "$GITHUB_ENV"
+        run: node scripts/ci/prepare-secrets.mjs
 
       - name: Validate Compose configuration
         id: config
@@ -169,11 +159,14 @@ jobs:
         timeout-minutes: 3
         shell: bash
         run: |
-          docker compose down --volumes --remove-orphans > "$RUNNER_TEMP/cleanup.log" 2>&1
-          containers=$(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")
-          networks=$(docker network ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")
-          volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")
-          test -z "$containers$networks$volumes"
+          cleanup_status=0
+          docker compose down --volumes --remove-orphans > "$RUNNER_TEMP/cleanup.log" 2>&1 || cleanup_status=1
+          containers=$(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME") || cleanup_status=1
+          networks=$(docker network ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME") || cleanup_status=1
+          volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME") || cleanup_status=1
+          test -z "$containers$networks$volumes" || cleanup_status=1
+          node scripts/ci/cleanup-secrets.mjs || cleanup_status=1
+          exit "$cleanup_status"
 
       - name: Run isolated Postman collection
         id: postman

@@ -28,11 +28,11 @@ cd banking-api
 git switch develop
 ```
 
-Para um banco novo, copie `.env.example` para `.env` e preencha `DB_ADMIN_PASSWORD`, `FLYWAY_PASSWORD`, `DB_PASSWORD` e `JWT_SECRET` com segredos distintos. Use um segredo JWT aleatório com pelo menos 32 caracteres ASCII. Se já houver um volume, siga primeiro o [procedimento de adaptação PostgreSQL](docs/postgresql-security.md), sem apagar ou recriar seus dados. No PowerShell:
+Para um banco novo, configure `SECRETS_DIR` no `.env` e prepare os quatro arquivos privados conforme o [guia de secrets](docs/secrets.md). A API recebe somente senha DML e JWT por arquivos; o migrador recebe sua própria senha. Se já houver um volume, preserve os valores atuais e siga o procedimento de adoção, sem apagar ou recriar dados. No PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
-# Preencha os segredos no arquivo .env antes de iniciar.
+# Configure SECRETS_DIR e prepare os arquivos privados antes de iniciar.
 docker compose up -d --build --wait
 ```
 

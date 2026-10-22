@@ -1,12 +1,12 @@
-# Segurança operacional — Fase 4.2.2
+# Segurança operacional
 
 Este documento registra procedimentos e pendências. Não executa rotação, migrations,
-alteração de credenciais ou implantação. As Fases 4.3 e 4.4 dependem de autorização
-própria; suas medidas ainda não estão implementadas.
+alteração de credenciais ou implantação. A separação Flyway e os secrets por arquivo
+seguem os guias de [migrations](migrations.md) e [secrets](secrets.md).
 
 ## Rotação emergencial do JWT
 
-A API usa uma única chave HMAC em `JWT_SECRET`, carregada ao iniciar o processo.
+A API usa uma única chave HMAC em `jwt.secret` (arquivo no Compose; `JWT_SECRET` no modo legado), carregada ao iniciar o processo.
 Não há chave anterior aceita em paralelo, lista de revogação ou logout que invalide
 tokens no servidor. A duração máxima configurável é de 24 horas.
 
@@ -23,12 +23,12 @@ comprometidos, incluindo os que um atacante possa emitir. Procedimento:
    interpreta esse resultado como texto UTF-8, sem decodificar Base64. Não use
    senha humana, chave de testes ou credencial PostgreSQL.
 3. Grave a nova chave pelo canal seguro do ambiente. No ambiente local atual,
-   atualize somente `JWT_SECRET` no `.env` existente, com permissões restritas,
+   atualize somente o arquivo `jwt_secret` no diretório privado, com permissões restritas,
    sem imprimir o valor, colocá-lo em argumentos de comandos, histórico, tickets
    ou relatórios. Não copie `.env.example` sobre um `.env` preenchido.
-4. Recrie todas as instâncias da API para carregar a nova variável; em processos
+4. Recrie todas as instâncias da API para carregar o novo arquivo; em processos
    Java fora do Compose, reinicie-os com o ambiente atualizado. `docker compose
-   restart` reutiliza o ambiente do container e não aplica a troca no `.env`.
+   restart` não garante a troca de inode em mounts de arquivos substituídos.
    Não faça rollout misto com chaves diferentes: instâncias antigas ainda
    aceitariam tokens comprometidos. Não remova volumes ou altere o banco.
 5. Com o tráfego externo ainda suspenso, confira liveness/readiness em todas as
@@ -51,14 +51,14 @@ Investigue a origem da exposição antes de encerrar o incidente.
 ## Configuração sensível atual
 
 - `.env.example` contém nomes e valores não secretos; os campos de credenciais
-  permanecem vazios. `.env` é excluído pelas regras locais do Git e pelo contexto
+  foram substituídos por `SECRETS_DIR`. `.env` é excluído pelas regras locais do Git e pelo contexto
   de build da API. Isso não remove segredos eventualmente publicados no passado
   nem protege cópias, backups ou permissões locais excessivas.
 - Administrador, migrador e aplicação usam credenciais distintas. O `.env` não
   altera automaticamente senhas de roles em volumes existentes; siga o
   [procedimento PostgreSQL](postgresql-security.md).
 - A API não recebe credenciais do Flyway. Elas ficam no bootstrap do banco e no
-  serviço temporário `migrate`. Secrets em variáveis dos containers continuam visíveis a quem
+  serviço temporário `migrate`, montadas por arquivo. Os arquivos continuam acessíveis a quem
   administra o Docker. Evite publicar saídas de `docker inspect` ou de
   `docker compose config` sem sanitização.
 - A chave fixa e as credenciais de fixtures pertencem exclusivamente aos testes.
@@ -102,23 +102,9 @@ A separação reduz o impacto de comprometimento da API. Administradores Docker 
 o processo de provisionamento ainda têm acesso aos segredos; remover o container
 encerrado do migrador reduz sua retenção, sem substituir a Fase 4.4.
 
-## Fase 4.4 — Gestão de secrets
+## Fase 4.4 ? Gestão de secrets
 
-Proposta pendente de implementação:
-
-- Escolher armazenamento gerenciado ou arquivos montados com ACLs restritas,
-  auditabilidade e menor privilégio. Não presumir que arquivos protegem contra
-  administrador do host ou acesso irrestrito ao daemon Docker.
-- Integrar o carregamento ao Spring e ao provisionamento PostgreSQL, removendo
-  credenciais sensíveis do ambiente dos containers onde viável. Convenções
-  `_FILE` não são automaticamente suportadas por todas as propriedades atuais.
-- Definir responsáveis, validade, rotação, revogação, retenção e recuperação de
-  cada secret. Senhas PostgreSQL exigem coordenação entre roles existentes,
-  consumidores e renovação das conexões; mudar um arquivo isoladamente não basta.
-- Restringir permissões de `.env`, diretórios temporários, backups e canais do CI;
-  preservar relatórios sanitizados e evitar exposição em argumentos e logs.
-- Avaliar rotação gradual de JWT para operações planejadas; em comprometimento,
-  não manter aceitação da chave antiga. Essa capacidade ainda não existe.
-
-As fases futuras devem preservar autenticação, contratos financeiros e dados;
-esta documentação não autoriza sua implementação ou operação em produção.
+Implementada por arquivos privados e montagens por serviço, sem novas dependências.
+Consulte [secrets](secrets.md) para ACLs, configuração, adoção, rotação, rollback
+e limites de proteção contra administradores do host/Docker. Um cofre externo e
+rotação gradual com múltiplas chaves JWT continuam fora deste escopo.

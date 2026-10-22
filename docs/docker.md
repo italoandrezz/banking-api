@@ -4,7 +4,7 @@ Requer Docker Engine/Desktop com containers Linux e Compose v2. Execute os coman
 
 ## Banco novo
 
-Copie `.env.example` para `.env` e preencha quatro segredos distintos: `DB_ADMIN_PASSWORD`, `FLYWAY_PASSWORD`, `DB_PASSWORD` e `JWT_SECRET`. O segredo JWT deve ter ao menos 32 caracteres ASCII aleatórios. Não sobrescreva um `.env` existente.
+Configure `SECRETS_DIR` no `.env` e prepare os arquivos privados `admin_password`, `app_password`, `migrator_password` e `jwt_secret` conforme o [guia de secrets](secrets.md). Não sobrescreva um `.env` existente. O JWT deve ter pelo menos 32 bytes de texto UTF-8 com entropia adequada.
 
 ```powershell
 docker compose config --quiet
@@ -19,12 +19,9 @@ Somente o Nginx publica em loopback; API e PostgreSQL não publicam portas no ho
 |---|---|---|
 | `DB_NAME` | Banco inicial | `banking_db` |
 | `DB_ADMIN_USERNAME` | Administrador inicial, exclusivo do serviço db | `banking_admin` |
-| `DB_ADMIN_PASSWORD` | Senha do administrador | Obrigatória |
+| `SECRETS_DIR` | Diretório privado dos quatro arquivos de secrets | Obrigatório |
 | `FLYWAY_USERNAME` | Migrador e proprietário dos objetos | `banking_migrator` |
-| `FLYWAY_PASSWORD` | Senha do migrador | Obrigatória |
 | `DB_USERNAME` | Aplicação | `banking_app` |
-| `DB_PASSWORD` | Senha da aplicação | Obrigatória |
-| `JWT_SECRET` | Assinatura JWT | Obrigatória |
 | `JWT_EXPIRATION` | Duração em ms, até 86400000 | `86400000` |
 | `API_PORT` | Porta do Nginx no host | `8080` |
 
