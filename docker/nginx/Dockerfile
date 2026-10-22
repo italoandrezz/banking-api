@@ -1,5 +1,5 @@
-# Official nginx 1.30.6 without unused image/XML processing modules.
-FROM nginx@sha256:3028fc1419f99b95c1c69f844bbaf49dc1b881750c51b497fc721ac4f02a14e6
+# Official nginx 1.30.6 Alpine 3.24 slim; musl 1.2.6-r3 fixes CVE-2026-107891.
+FROM nginx@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960
 # CVE-2026-85091: require the patched Alpine revision, fail if unavailable.
 RUN apk add --no-cache 'zlib>=1.3.2-r1'
 USER 101:101

@@ -71,16 +71,19 @@ Investigue a origem da exposição antes de encerrar o incidente.
 
 ## CVEs Spring e prazo das exceções
 
-As exceções para CVE-2026-47884 e CVE-2026-47890 aplicam-se somente a
-`spring-webmvc:6.2.19`, sob as condições registradas no
-[guia de dependências](dependency-security.md). A versão instalada continua
-afetada; não há declaração de correção nem de falso positivo.
+Na migração atual, Spring Boot 4.0.8 utiliza Framework 7.0.9. As CVEs
+CVE-2026-47884 e CVE-2026-47890 não aparecem nos scans locais atuais.
+O [guia de dependências](dependency-security.md) registra as versões, as 13 CVEs
+acompanhadas e as 42 ocorrências residuais não bloqueantes na imagem API.
+Aprovação do Trivy pela política vigente não equivale a ausência de riscos.
 
-`scripts/security/policy.mjs` deixa de aceitar as exceções em
-**15/11/2026 às 00:00 UTC** (14/11/2026 às 21:00 em Fortaleza). A decisão sobre
-atualização e eventual suporte comercial deve ocorrer antes desse instante.
-Não prorrogar automaticamente nem reduzir a severidade para aprovar o CI.
-Novos usos de XSLT/views/SSE também exigem revisão antes do prazo.
+Historicamente, as exceções foram concedidas somente para spring-webmvc:6.2.19,
+que permanecia afetado. Essa decisão foi preservada; as exceções não foram
+necessárias para aprovar o inventário atual. Nenhuma regra foi alterada.
+Em scripts/security/policy.mjs, o vencimento permanece em **15/11/2026 às 00:00 UTC**
+(14/11/2026 às 21:00 em Fortaleza). Não prorrogar automaticamente nem reduzir
+severidade para aprovar o CI. Rollback para uma versão afetada exige reavaliação,
+inclusive das condições de aplicabilidade e do prazo original.
 
 ## Fase 4.3 — Flyway fora do runtime
 

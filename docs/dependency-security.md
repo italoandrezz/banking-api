@@ -1,5 +1,60 @@
 # Dependências e segurança JWT
 
+## Estado atual: migração Spring Boot 4
+
+Esta seção descreve a validação local da migração. As seções seguintes preservam
+as decisões históricas, inclusive versões então afetadas, e não descrevem o
+inventário atual. Não há aprovação automática de publicação ou produção.
+
+| Componente | Versão validada |
+|---|---|
+| Java | 17 |
+| Spring Boot / Framework | 4.0.8 / 7.0.9 |
+| Tomcat core, EL e WebSocket | 11.0.27 |
+| Jackson 3 BOM, core e databind | 3.1.7 |
+| Jackson 2 / annotations | 2.21.7 / 2.21 |
+| Springdoc | 3.0.3 |
+| PostgreSQL JDBC / Log4j BOM | 42.7.14 / 2.25.5 |
+| Nginx / Alpine | 1.30.6 / 3.24.3 |
+| musl e musl-utils | 1.2.6-r3 |
+
+O parent gerencia Framework. Propriedades Maven alinham Tomcat e os BOMs Jackson
+2 e 3 sem overrides individuais. Jackson 2 permanece para JJWT e consumidores
+legados; seu módulo de compatibilidade depreciado exige acompanhamento.
+Commons Lang usa a versão gerenciada pelo Boot. O starter Flyway adicional tem
+escopo de teste; o migrador de produção continua independente do contexto Spring
+Boot e sem disponibilizar suas credenciais ao runtime da API.
+
+A API foi reconstruída sem cache de camadas. JAR e imagem não contêm Tomcat
+11.0.24 nem Jackson 3.1.5. A base Nginx está fixada pelo digest
+sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960.
+
+Trivy 0.75.0 aprovou a imagem API, o inventário Maven com cobertura integral das
+154 coordenadas e a imagem Nginx, pela política e exceções vigentes, sem
+flexibilização. A API mantém **42 ocorrências residuais não bloqueantes** no
+sistema operacional (não necessariamente 42 CVEs distintas). Nginx não apresentou
+achados. Nenhum novo bloqueio foi detectado.
+
+As 13 CVEs acompanhadas não aparecem nos scans atuais:
+
+- Tomcat: CVE-2026-65182, CVE-2026-65905 e CVE-2026-68525.
+- Jackson: CVE-2026-89407, CVE-2026-89425, CVE-2026-68497, CVE-2026-91776,
+  CVE-2026-91777, CVE-2026-19032 e CVE-2026-83557.
+- musl: CVE-2026-107891.
+- Spring: CVE-2026-47884 e CVE-2026-47890.
+
+Evidências locais, ignoradas pelo Git: target/security/summary.md e junit.xml,
+target/nginx-security/summary.md e target/final-operational-smoke/summary.json.
+O smoke descartável aprovou migrador, duas APIs e Nginx, com limpeza confirmada.
+Nenhum scanner foi repetido nesta atualização documental. PASS significa
+atendimento à política vigente, não ausência de vulnerabilidades ou garantia
+permanente de segurança. Os riscos residuais permanecem sob acompanhamento.
+
+As exceções históricas limitadas a spring-webmvc:6.2.19 foram preservadas e
+expiram em **15/11/2026 às 00:00 UTC**, sem extensão ou alteração de critérios.
+Não foram necessárias para aprovar Spring 7.0.9. Uma reversão para versões
+antigas exige nova avaliação, respeitando as condições e o prazo original.
+
 ## Fase 3: auditoria automatizada em 16/10/2026
 
 Trivy 0.75.0, fixado pelo digest
