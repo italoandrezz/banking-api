@@ -1,6 +1,7 @@
 package com.italo.bankingapi.entity;
 
 import jakarta.persistence.*;
+import com.italo.bankingapi.enums.CustomerRole;
 import lombok.*;
 
 import java.time.LocalDate;
@@ -20,6 +21,11 @@ public class Customer {
     @Id
     @GeneratedValue
     private UUID id;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private CustomerRole role = CustomerRole.CUSTOMER;
 
     @Column(name = "full_name", nullable = false, length = 120)
     private String fullName;

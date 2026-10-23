@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Postman: testar API isolada",
+      "type": "process",
+      "command": "node",
+      "args": ["${workspaceFolder}/scripts/postman/run.mjs"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {"reveal": "always", "panel": "dedicated", "clear": true}
+    },
+    {
+      "label": "Postman: testar e inspecionar por 10 minutos",
+      "type": "process",
+      "command": "node",
+      "args": ["${workspaceFolder}/scripts/postman/run.mjs", "--interactive"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": [],
+      "presentation": {"reveal": "always", "panel": "dedicated"}
+    },
+    {
+      "label": "Postman: abrir resultados",
+      "type": "process",
+      "command": "${execPath}",
+      "args": ["--reuse-window", "${workspaceFolder}/target/postman/latest/summary.md"],
+      "problemMatcher": []
+    }
+  ]
+}

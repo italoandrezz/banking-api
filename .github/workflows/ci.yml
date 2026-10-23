@@ -1,0 +1,197 @@
+name: Banking API CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: banking_api_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d banking_api_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Grant execute permission for Maven Wrapper
+        run: chmod +x mvnw
+
+      - name: Build and test
+        run: ./mvnw clean verify
+        env:
+          TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/banking_api_test
+          TEST_DATABASE_USERNAME: postgres
+          TEST_DATABASE_PASSWORD: postgres
+
+      - name: Set up Node.js for dependency inventory
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+
+      - name: Export resolved Maven dependencies
+        run: |
+          ./mvnw -B -ntp dependency:tree -DoutputType=json -DoutputFile=target/dependency-tree.json
+          node scripts/security/sbom.mjs
+
+      - name: Upload dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-dependencies-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/security/maven.cdx.json
+          retention-days: 1
+          if-no-files-found: error
+
+  compose:
+    name: Docker Compose validation
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      COMPOSE_PROJECT_NAME: banking-ci
+      DB_NAME: banking_ci
+      DB_USERNAME: banking_ci
+      API_PORT: '18080'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+
+      - name: Test Postman infrastructure
+        id: node
+        run: node --test scripts/postman/*.test.mjs
+
+      - name: Download resolved Maven dependency inventory
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-dependencies-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/security
+
+      - name: Install verified Postman CLI
+        id: install
+        run: bash scripts/ci/install-postman.sh
+
+      - name: Generate private temporary secret files
+        id: environment
+        shell: bash
+        run: node scripts/ci/prepare-secrets.mjs
+
+      - name: Validate Compose configuration
+        id: config
+        run: docker compose config --quiet
+
+      - name: Build API image
+        id: image
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          docker compose --progress plain build --pull > "$RUNNER_TEMP/image-build.log" 2>&1
+          image_id=$(docker image inspect "$COMPOSE_PROJECT_NAME-api" --format '{{.Id}}')
+          printf 'API_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
+          nginx_image_id=$(docker image inspect "$COMPOSE_PROJECT_NAME-nginx" --format '{{.Id}}')
+          printf 'NGINX_IMAGE_ID=%s\n' "$nginx_image_id" >> "$GITHUB_ENV"
+
+      - name: Scan API, Maven dependencies and Nginx
+        id: security
+        timeout-minutes: 25
+        run: |
+          node scripts/security/scan.mjs "$API_IMAGE_ID"
+          node scripts/security/scan.mjs "$NGINX_IMAGE_ID" --nginx
+
+      - name: Start healthy services
+        id: startup
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          docker compose up -d --no-build --wait --wait-timeout 180 > "$RUNNER_TEMP/startup.log" 2>&1
+          node scripts/ci/verify-migrations.mjs
+
+      - name: Test real HTTP financial flow
+        id: smoke
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          try {
+            ./scripts/Test-Compose.ps1 -BaseUrl http://localhost:18080 *> $null
+            Write-Output 'Compose HTTP smoke passed.'
+          } catch {
+            Write-Error 'Compose HTTP smoke failed; native output withheld.'
+            exit 1
+          }
+
+      - name: Remove test containers and volumes
+        id: cleanup
+        if: always() && steps.environment.outcome == 'success'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          cleanup_status=0
+          docker compose down --volumes --remove-orphans > "$RUNNER_TEMP/cleanup.log" 2>&1 || cleanup_status=1
+          containers=$(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME") || cleanup_status=1
+          networks=$(docker network ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME") || cleanup_status=1
+          volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME") || cleanup_status=1
+          test -z "$containers$networks$volumes" || cleanup_status=1
+          node scripts/ci/cleanup-secrets.mjs || cleanup_status=1
+          exit "$cleanup_status"
+
+      - name: Run isolated Postman collection
+        id: postman
+        timeout-minutes: 12
+        run: node scripts/postman/run.mjs --image "$API_IMAGE_ID" --recovery
+
+      - name: Generate sanitized pipeline reports
+        if: always()
+        env:
+          CI_STEP_RESULTS: ${{ toJSON(steps) }}
+        run: node scripts/ci/report.mjs
+
+      - name: Upload sanitized reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/ci/junit.xml
+            target/ci/summary.md
+            target/postman/latest/junit.xml
+            target/postman/latest/summary.md
+            target/security/junit.xml
+            target/security/summary.md
+            target/nginx-security/junit.xml
+            target/nginx-security/summary.md
+          retention-days: 7
+          if-no-files-found: error

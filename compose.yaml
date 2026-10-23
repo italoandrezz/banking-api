@@ -1,0 +1,116 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-banking_db}
+      POSTGRES_USER: ${DB_ADMIN_USERNAME:-banking_admin}
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
+      DATABASE_USERNAME: ${DB_USERNAME:-banking_app}
+      DATABASE_PASSWORD_FILE: /run/secrets/app_password
+      FLYWAY_USERNAME: ${FLYWAY_USERNAME:-banking_migrator}
+      FLYWAY_PASSWORD_FILE: /run/secrets/migrator_password
+    secrets: [admin_password, app_password, migrator_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [database]
+
+  migrate:
+    secrets: [migrator_password]
+    image: ${COMPOSE_PROJECT_NAME:-banking-api-service}-api
+    pull_policy: never
+    entrypoint: [java, '-Dloader.main=com.italo.bankingapi.migration.MigrationRunner', -cp, /app/app.jar, org.springframework.boot.loader.launch.PropertiesLauncher]
+    environment:
+      MIGRATION_DATABASE_URL: jdbc:postgresql://db:5432/${DB_NAME:-banking_db}?connectTimeout=5&socketTimeout=60
+      FLYWAY_USERNAME: ${FLYWAY_USERNAME:-banking_migrator}
+      FLYWAY_PASSWORD_FILE: /run/secrets/migrator_password
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: 'no'
+    networks: [database]
+
+  api:
+    secrets:
+      - source: app_password
+        target: spring.datasource.password
+      - source: jwt_secret
+        target: jwt.secret
+    image: ${COMPOSE_PROJECT_NAME:-banking-api-service}-api
+    build: .
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/${DB_NAME:-banking_db}
+      DATABASE_USERNAME: ${DB_USERNAME:-banking_app}
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      BANKING_SECRETS_DIRECTORY: /run/secrets/
+      SPRING_FLYWAY_ENABLED: 'false'
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      SERVER_PORT: "8080"
+      SHOW_SQL: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks: [backend, database]
+
+  nginx:
+    # Pinned official base with the required Alpine security patch.
+    build: ./docker/nginx
+    user: "101:101"
+    entrypoint: ["/bin/sh", "/etc/banking-nginx/start.sh"]
+    read_only: true
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=1770
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    environment:
+      AUTH_LOGIN_RATE: ${AUTH_LOGIN_RATE:-10}
+      AUTH_LOGIN_BURST: ${AUTH_LOGIN_BURST:-5}
+      AUTH_REGISTER_RATE: ${AUTH_REGISTER_RATE:-3}
+      AUTH_REGISTER_BURST: ${AUTH_REGISTER_BURST:-2}
+      AUTH_TOTAL_RATE: ${AUTH_TOTAL_RATE:-600}
+      AUTH_TOTAL_BURST: ${AUTH_TOTAL_BURST:-30}
+    volumes:
+      - ./docker/nginx:/etc/banking-nginx:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health/liveness"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks: [edge, backend]
+
+networks:
+  edge:
+  backend:
+    internal: true
+  database:
+    internal: true
+
+volumes:
+  postgres_data:
+
+secrets:
+  admin_password:
+    file: ${SECRETS_DIR:?Set secrets directory}/admin_password
+  app_password:
+    file: ${SECRETS_DIR:?Set secrets directory}/app_password
+  migrator_password:
+    file: ${SECRETS_DIR:?Set secrets directory}/migrator_password
+  jwt_secret:
+    file: ${SECRETS_DIR:?Set secrets directory}/jwt_secret

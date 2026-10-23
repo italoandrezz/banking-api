@@ -4,6 +4,8 @@ package com.italo.bankingapi.entity;
 import com.italo.bankingapi.enums.AccountStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -36,7 +38,8 @@ public class Account {
     private BigDecimal balance;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "account_status")
     private AccountStatus status;
 
     @Column(name = "created_at", nullable = false)
