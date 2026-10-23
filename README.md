@@ -226,7 +226,7 @@ O GitHub Actions mantém os checks `build` e `Docker Compose validation`, em PRs
 
 ### Postman no VS Code
 
-A task **Postman: testar API isolada** executa 185 requisições e 1047 assertions nos 18 endpoints, com API e PostgreSQL descartáveis. Requer Docker, Node.js e Postman CLI; não utiliza o banco de desenvolvimento.
+A task Postman: testar API isolada executa 185 requisições e 1047 assertions nos 18 endpoints, com API e PostgreSQL descartáveis. Requer Docker, Node.js e Postman CLI; não utiliza o banco de desenvolvimento.
 
 ```powershell
 .\scripts\Test-Postman.ps1
@@ -250,4 +250,4 @@ Os guias incluem registros de validações anteriores.
 
 ## Autor
 
-Desenvolvido por **Ítalo André**. Projeto de portfólio em desenvolvimento backend com Java, Spring Boot e PostgreSQL.
+Desenvolvido por Ítalo Ramos. Projeto de portfólio em desenvolvimento backend com Java, Spring Boot e PostgreSQL.
