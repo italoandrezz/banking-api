@@ -13,7 +13,7 @@ O runner constrói a imagem e cria um projeto `banking-postman-<aleatório>`.
 Para reutilizar uma imagem, acrescente `--image sha256:<ID local completo>`.
 Não há opção de URL, banco ou volume externo. O PostgreSQL deve usar tmpfs,
 o projeto deve ter o prefixo esperado e a API deve publicar somente em loopback.
-O único bind permitido pelo runner é o provisionamento em modo somente leitura.
+Os binds permitidos são o provisionamento e os arquivos privados de secrets da própria execução, somente para leitura e restritos aos serviços autorizados. A API recebe senha DML e JWT; o migrador recebe somente sua senha; o PostgreSQL recebe as três senhas de provisionamento.
 Senhas e JWT são aleatórios; dados financeiros e credenciais não entram no relatório.
 
 ## O que é verificado

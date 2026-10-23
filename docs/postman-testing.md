@@ -37,7 +37,7 @@ Código de saída zero significa suíte aprovada e limpeza confirmada. Qualquer 
 
 ## Isolamento e limpeza
 
-`compose.postman.yaml` é independente do Compose de desenvolvimento. Cada execução recebe projeto aleatório `banking-postman-...`, rede própria, porta aleatória em `127.0.0.1` e PostgreSQL em `tmpfs`. Não há volumes de dados persistentes nem porta publicada para o banco. O único bind é o código de provisionamento PostgreSQL, somente para leitura. O runner verifica essas propriedades antes de preparar os dados e não aceita uma URL externa como argumento.
+`compose.postman.yaml` é independente do Compose de desenvolvimento. Cada execução recebe projeto aleatório `banking-postman-...`, rede própria, porta aleatória em `127.0.0.1` e PostgreSQL em `tmpfs`. Não há volumes de dados persistentes nem porta publicada para o banco. Os binds permitidos são o código de provisionamento PostgreSQL e os arquivos de secrets privados da própria execução, todos somente para leitura e restritos aos serviços autorizados. A API recebe apenas senha DML e JWT; o migrador recebe somente sua senha; o PostgreSQL recebe as três senhas de provisionamento. O runner verifica essas propriedades antes de preparar os dados e não aceita uma URL externa como argumento.
 
 O arquivo `.env` de desenvolvimento não é carregado. Senhas, segredo JWT e usuários de teste são gerados por execução. Um cliente sintético é promovido a ADMIN diretamente no banco isolado para testar estornos; isso não altera a aplicação nem cria um administrador no banco de desenvolvimento. Um JWT expirado, com assinatura válida, é gerado somente para o cenário de rejeição.
 

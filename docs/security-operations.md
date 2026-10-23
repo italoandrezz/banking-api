@@ -85,6 +85,35 @@ Em scripts/security/policy.mjs, o vencimento permanece em **15/11/2026 às 00:00
 severidade para aprovar o CI. Rollback para uma versão afetada exige reavaliação,
 inclusive das condições de aplicabilidade e do prazo original.
 
+### Histórico: alternativas avaliadas em 21/10/2026
+
+Naquele candidato, CVE-2026-47884 e CVE-2026-47890 ainda não estavam corrigidas.
+Na avaliação de 21/10/2026, não foi confirmado patch OSS compatível com a linha
+Spring Boot 3.5.16; o projeto utilizava Spring Framework 6.2.19.
+
+- **Alternativa comercial:** Spring Framework 6.2.20, condicionada ao acesso ao
+  repositório/suporte comercial e à validação de compatibilidade com Boot 3.5.16,
+  Java 17 e as demais dependências. A atualização não foi aplicada.
+- **Plano de correção OSS:** migração para Spring Boot 4.0.8 / Framework 7.0.9,
+  sujeita a autorização específica, revisão das dependências e testes de regressão.
+  Java 17 é suportado, mas a mudança principal não é uma substituição direta
+  de Framework 6.2 por 7.0 no Boot atual. Naquela data, o plano ainda não havia sido implementado.
+
+As exceções expiram em **15/11/2026 às 00:00 UTC**, sem prorrogação.
+**A decisão de publicação permanece pendente, sem aprovação implícita de risco.**
+Esta documentação não autoriza deploy nem declara o projeto seguro para produção;
+passar no CI não substitui a decisão explícita sobre os riscos residuais.
+
+Fontes: [CVE-2026-47884](https://spring.io/security/cve-2026-47884/),
+[CVE-2026-47890](https://spring.io/security/cve-2026-47890/) e
+[requisitos do Boot 4.0](https://docs.spring.io/spring-boot/4.0/system-requirements.html).
+
+Atualização após o PR #47: a alternativa OSS foi implementada e integrada em
+`dc6f8fb44d2acb2971221f4a87af0335f6ea6eb0`. As duas CVEs Spring, junto às demais
+11 acompanhadas, não aparecem nos scans finais. A política e os prazos históricos
+foram preservados; a decisão de publicação e o tratamento dos riscos residuais
+continuam sujeitos à aprovação explícita.
+
 ## Fase 4.3 — Flyway fora do runtime
 
 Implementação operacional descrita no [guia de migrations](migrations.md):

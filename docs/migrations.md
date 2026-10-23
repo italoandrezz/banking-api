@@ -83,7 +83,7 @@ Empacote o jar e execute em um processo exclusivo, com apenas as três variávei
 do migrador (credenciais injetadas pelo operador, nunca na linha de comando):
 
 ```powershell
-java '-Dloader.main=com.italo.bankingapi.migration.MigrationRunner' -cp target/banking-api-service-0.0.1-SNAPSHOT.jar org.springframework.boot.loader.launch.PropertiesLauncher
+java '-Dloader.main=com.italo.bankingapi.migration.MigrationRunner' -cp target/banking-api-service-1.0.0.jar org.springframework.boot.loader.launch.PropertiesLauncher
 if ($LASTEXITCODE -ne 0) { throw 'Migration falhou; não iniciar a API' }
 ```
 
@@ -98,9 +98,11 @@ valide dados, histórico, ownership e permissões. O runner de recuperação ini
 a API restaurada com `--no-deps`, sem migrador, e verifica replay idempotente.
 Upgrade da cópia restaurada é uma etapa posterior explícita.
 
-Esta fase não altera schema: se for preciso reverter, use a imagem e configuração
-anteriores revisadas, mantendo o volume e os checksums. Isso reintroduz o risco
-de credenciais DDL no runtime antigo; requer decisão operacional explícita.
+A migração Boot 4 da v1.0.0 não altera as migrations existentes: se for preciso
+reverter, use a imagem e configuração anteriores revisadas, mantendo o volume e
+os checksums. Voltar para antes da Fase 4.3 pode reintroduzir credenciais DDL no
+runtime; voltar para dependências afetadas pode reintroduzir CVEs. Cada destino
+de rollback requer avaliação e decisão operacional explícitas.
 Para futuras migrations incompatíveis, voltar somente a imagem não é rollback
 seguro. Use correção progressiva revisada ou restauração em banco novo e troca
 controlada de destino, conforme [recuperação](recovery.md). Nunca restaure sobre
